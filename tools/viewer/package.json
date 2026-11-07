@@ -1,0 +1,9 @@
+{
+  "name": "tiny-atlas-viewer",
+  "private": true,
+  "description": "Stand-in renderer used to test route packages and asset packs (headless Chromium via Playwright).",
+  "dependencies": {
+    "three": "0.169.0",
+    "playwright": "^1.48.0"
+  }
+}

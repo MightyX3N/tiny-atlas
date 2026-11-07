@@ -1,0 +1,8 @@
+# route builder, pack tools, logo (Python 3.11+)
+numpy>=2.0
+scipy>=1.13
+pillow>=10
+shapely>=2.0
+mapbox-vector-tile>=2.0
+lupa>=2.0          # runs the Lua tools/tests in LuaJIT 2.1 and Lua 5.4 without installing Lua
+global-land-mask>=1.0   # logo only

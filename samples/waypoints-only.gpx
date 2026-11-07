@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="gpxviewer.app-samples" xmlns="http://www.topografix.com/GPX/1/1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:gpxtpx="http://www.garmin.com/xmlschemas/TrackPointExtension/v1" xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd">
+  <metadata>
+    <name>Waypoints Only</name>
+    <desc>Synthetic sample track for gpxviewer.app — Waypoint-fallback parser test (0 track points). Coordinates are plausible for City points of interest (open water — no roads to trace) and contain no personal GPS data. Public domain (CC0-1.0).</desc>
+    <author><name>gpxviewer.app</name></author>
+    <copyright author="gpxviewer.app"><license>https://creativecommons.org/publicdomain/zero/1.0/</license></copyright>
+    <time>2024-06-01T07:00:00Z</time>
+    <bounds minlat="48.847791" minlon="2.342209" maxlat="48.865845" maxlon="2.361826"/>
+  </metadata>
+  <wpt lat="48.847839" lon="2.345205"><ele>96.2</ele><name>Waypoint 1</name></wpt>
+  <wpt lat="48.863217" lon="2.347972"><ele>72.6</ele><name>Waypoint 2</name></wpt>
+  <wpt lat="48.850198" lon="2.354847"><ele>79.6</ele><name>Waypoint 3</name></wpt>
+  <wpt lat="48.864096" lon="2.351178"><ele>55.2</ele><name>Waypoint 4</name></wpt>
+  <wpt lat="48.856851" lon="2.344549"><ele>72.1</ele><name>Waypoint 5</name></wpt>
+  <wpt lat="48.850277" lon="2.355362"><ele>30.3</ele><name>Waypoint 6</name></wpt>
+  <wpt lat="48.865845" lon="2.353832"><ele>85.2</ele><name>Waypoint 7</name></wpt>
+  <wpt lat="48.856488" lon="2.357909"><ele>44.5</ele><name>Waypoint 8</name></wpt>
+  <wpt lat="48.848493" lon="2.356766"><ele>38.6</ele><name>Waypoint 9</name></wpt>
+  <wpt lat="48.847791" lon="2.357401"><ele>42.5</ele><name>Waypoint 10</name></wpt>
+  <wpt lat="48.852879" lon="2.361826"><ele>98.6</ele><name>Waypoint 11</name></wpt>
+  <wpt lat="48.861227" lon="2.342209"><ele>60.1</ele><name>Waypoint 12</name></wpt>
+</gpx>
