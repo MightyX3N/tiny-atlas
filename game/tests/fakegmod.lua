@@ -2,7 +2,7 @@
 -- the game. Files under "DATA" go to a temp folder, timers and hooks are ticked by the test, keys are
 -- set by the test. Usage: local gm = dofile("fakegmod.lua")(data_dir, gamemode_dir)
 return function(DATA, GMDIR)
-  local F = { t = 0, keys = {}, timers = {}, hooks = {}, nets = {}, printed = {} }
+  local F = { t = 0, keys = {}, timers = {}, hooks = {}, nets = {}, printed = {}, DATA = DATA, GMDIR = GMDIR }
   CLIENT, SERVER = true, false
   KEY_W, KEY_S, KEY_LSHIFT = 33, 29, 79
 

@@ -3,6 +3,7 @@
 local DATA = os.tmpname() .. "_gmdata"; os.execute('mkdir -p "' .. DATA .. '/omniplay"')
 local GMDIR = "../gamemodes/tinyatlas/gamemode"
 local F = dofile("fakegmod.lua")(DATA, GMDIR)
+dofile("fakegmod_render.lua")(F)   -- cl_init also loads the world renderer
 local fails = 0
 local function check(name, ok, extra) if not ok then fails = fails + 1 end; print(string.format("%-58s %s %s", name, ok and "ok" or "FAIL", extra or "")) end
 

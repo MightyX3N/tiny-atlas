@@ -145,3 +145,18 @@ return {
 `tools/packs/validate.lua` checks a pack (runs in LuaJIT, so the same code works in GMod and LÖVE):
 missing files, wrong image sizes, unknown keys, ground tags not covered (and whether `extends`
 covers them), and refuses to mark a `local_only` pack as publishable.
+
+## Runtime format (Garry's Mod / LÖVE)
+
+`tools/gmod_export.py` turns a route package into files the game's Lua reads directly (no PNG decoding):
+`route.txt` (JSON: track, chunk/page lists, bridges), `c_X_Y.dat` near chunks (header line + 1 m heights u16 +
+1 m ground tags RLE + 8 m water surface), `c_X_Y.txt` their buildings and trees, `p_X_Y.dat/.txt` mid pages
+(4 m), `l_X_Y.dat` every route page at 16 m, `far.dat` the far grid. Grids run south to north. The exporter's
+docstring has the byte layout.
+
+## Pack atlases for engines without shaders
+
+`tools/packs/gmod_prep.py` adds `materials/tinyatlas/packs/<id>/gmod/ground.png` (every ground tile, padded),
+`objects_<season>.png` (that season's trees, bushes and props + facade cells, roof, white) and
+`lua/tinyatlas/packs/<id>_gmod.lua` (where everything is, and average colours for the distant levels).
+Re-run it whenever the pack's art changes.

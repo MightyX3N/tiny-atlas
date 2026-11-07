@@ -208,6 +208,12 @@ def build(gpx_path, out_dir, cache_dir, plan_path=None, max_km=None, dem_zoom=13
     # ---------------- bridges: one smooth deck from bank to bank, gentle arch over water
     bridges = []
     trk_tree = cKDTree(np.stack([T['x'], T['y']], 1))
+    # the track at 1 m spacing: trees are kept off it (the rider and the camera pass there)
+    _tx, _ty = np.asarray(T['x'], float), np.asarray(T['y'], float)
+    _f = np.linspace(0, 1, 6)[:-1]
+    trk_dense = cKDTree(np.stack([(_tx[:-1, None] * (1 - _f) + _tx[1:, None] * _f).ravel(),
+                                  (_ty[:-1, None] * (1 - _f) + _ty[1:, None] * _f).ravel()], 1))
+    TREE_CLEAR = 2.5
     for b in W.bridges:
         p = np.array(b['p'])
         if len(p) < 2: continue
@@ -436,6 +442,9 @@ def build(gpx_path, out_dir, cache_dir, plan_path=None, max_km=None, dem_zoom=13
                 trees.append((ox + x, oy + TR.CHUNK - y, kind))
         if c['bg'] == ID['urban'] or len(blds) > 20:
             trees += [(x_, y_, 'broadleaf') for x_, y_ in street_trees(W, k, c['cls'], ox, oy, TR.CHUNK, TR.CRES, blds)]
+        if trees:
+            dtr, _ = trk_dense.query(np.array([(t[0], t[1]) for t in trees]))
+            trees = [t for t, d_ in zip(trees, dtr) if d_ >= TREE_CLEAR]
         tz = ground(np.array([t[0] for t in trees]), np.array([t[1] for t in trees])) if trees else []
         tree_out = [{'x': round(t[0], 1), 'y': round(t[1], 1), 'z': round(float(z), 2), 'kind': t[2], 'v': int(rng.integers(0, 1000)),
                      's': round(float(rng.uniform(0.8, 1.2)), 2)} for t, z in zip(trees, tz) if np.isfinite(z)]
