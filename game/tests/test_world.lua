@@ -26,6 +26,9 @@ include("cl_init.lua")
 hook.Run("InitPostEntity")
 local W = TinyAtlas.World
 check("world renderer loads", W ~= nil and F.commands.ta_perftest ~= nil)
+F.run_simple()
+check("joining the map starts riding the first route", W.on == true and W.mode == "ride", F.chat)
+F.run("ta_stop")
 
 F.run("ta_routes")
 local t0 = os.clock()

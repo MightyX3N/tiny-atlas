@@ -388,6 +388,22 @@ concommand.Add("ta_stop", function()
   if W.on and W.mode == "perftest" then write_report() end
   W.Stop()
 end)
+-- start riding the first exported route as soon as the map is loaded
+local autostart = CreateClientConVar("ta_autostart", "1", true, false, "Start riding the first route when the map loads")
+hook.Add("InitPostEntity", "TinyAtlas_AutoStart", function()
+  timer.Simple(1, function()
+    if not autostart:GetBool() or W.on then return end
+    local _, dirs = file.Find("tinyatlas/routes/*", "DATA")
+    if dirs and dirs[1] then
+      W.Start(dirs[1], "ride", {})
+      chat.AddText(Color(240, 200, 80), "[Tiny Atlas] ", color_white, "Riding " .. dirs[1] ..
+        ". W to ride, B to look back. Console: ta_perftest " .. dirs[1] .. " to measure, ta_stop to stop.")
+    else
+      chat.AddText(Color(240, 200, 80), "[Tiny Atlas] ", color_white, "No routes in garrysmod/data/tinyatlas/routes yet.")
+    end
+  end)
+end)
+
 concommand.Add("ta_routes", function()
   local _, dirs = file.Find("tinyatlas/routes/*", "DATA")
   print("[Tiny Atlas] routes in garrysmod/data/tinyatlas/routes:")

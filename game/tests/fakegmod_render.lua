@@ -183,7 +183,7 @@ return function(F, opts)
     local files, dirs = {}, {}
     local roots = where == "LUA" and F.lua_roots or { DATA }
     for _, root in ipairs(roots) do
-      local p = io.popen('ls -p "' .. root .. "/" .. dir .. '" 2>/dev/null')
+      local p = io.popen('ls -pL "' .. root .. "/" .. dir .. '" 2>/dev/null')
       if p then
         for l in p:lines() do
           if l:sub(-1) == "/" then dirs[#dirs + 1] = l:sub(1, -2)
@@ -194,6 +194,15 @@ return function(F, opts)
     end
     return files, dirs
   end
+
+  -- ---- timer.Simple, chat ----
+  F.simple = {}
+  timer.Simple = function(d, fn) F.simple[#F.simple + 1] = { at = F.t + d, fn = fn } end
+  function F.run_simple()
+    local due = F.simple; F.simple = {}
+    for _, e in ipairs(due) do e.fn() end
+  end
+  chat = { AddText = function(...) local t = {}; for _, x in ipairs({ ... }) do if type(x) == "string" then t[#t + 1] = x end end; F.chat = table.concat(t) end }
 
   -- ---- convars, commands ----
   local CV = {}
