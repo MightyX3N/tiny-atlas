@@ -444,7 +444,12 @@ def build(gpx_path, out_dir, cache_dir, plan_path=None, max_km=None, dem_zoom=13
             trees += [(x_, y_, 'broadleaf') for x_, y_ in street_trees(W, k, c['cls'], ox, oy, TR.CHUNK, TR.CRES, blds)]
         if trees:
             dtr, _ = trk_dense.query(np.array([(t[0], t[1]) for t in trees]))
-            trees = [t for t, d_ in zip(trees, dtr) if d_ >= TREE_CLEAR]
+            road_ids = {ID[n] for n in ('asphalt', 'cycleway', 'rail', 'parking') if n in ID}
+            def on_road(x_, y_):
+                ii_ = int(min(cls.shape[0] - 1, max(0, (oy + TR.CHUNK - y_) / TR.CRES)))
+                jj_ = int(min(cls.shape[1] - 1, max(0, (x_ - ox) / TR.CRES)))
+                return int(cls[ii_, jj_]) in road_ids
+            trees = [t for t, d_ in zip(trees, dtr) if d_ >= TREE_CLEAR and not on_road(t[0], t[1])]
         tz = ground(np.array([t[0] for t in trees]), np.array([t[1] for t in trees])) if trees else []
         tree_out = [{'x': round(t[0], 1), 'y': round(t[1], 1), 'z': round(float(z), 2), 'kind': t[2], 'v': int(rng.integers(0, 1000)),
                      's': round(float(rng.uniform(0.8, 1.2)), 2)} for t, z in zip(trees, tz) if np.isfinite(z)]

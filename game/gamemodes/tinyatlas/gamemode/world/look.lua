@@ -46,6 +46,15 @@ function Look.build(pack, atlas, rt, season)
   L.buildings = pack.buildings or {}
   L.roof_tints = {}
   for i, t in ipairs(L.buildings.roof_tints or { { 1, 1, 1 } }) do L.roof_tints[i] = t end
+  -- quay walls: the pack's wall texture, found among the ground tiles
+  local wall = pack.wall or {}
+  for tag, files in pairs(pack.ground or {}) do
+    for k, f in ipairs(files) do
+      if f == wall.texture and atlas.ground.cells[tag] then L.wall_rect = atlas.ground.cells[tag][k] end
+    end
+  end
+  L.wall_rect = L.wall_rect or (cells_by_name.cobble and cells_by_name.cobble[1]) or fallback[1]
+  L.wall_tint = wall.tint or { 0.9, 0.88, 0.85 }
   L.bridge_side = hex(pack.bridge and pack.bridge.side, { 185, 168, 143 })
   -- trees: per route tree kind
   local trees = {}

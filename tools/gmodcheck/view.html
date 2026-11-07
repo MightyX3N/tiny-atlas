@@ -30,7 +30,9 @@ for (const { g, a } of groups) {
 const c = hdr.camera, p = c.ang[0] * Math.PI / 180, y = c.ang[1] * Math.PI / 180;
 const vfov = 2 * Math.atan(Math.tan(c.fov * Math.PI / 360) * 0.75) * 180 / Math.PI;
 const cam = new THREE.PerspectiveCamera(vfov * (Q.get('fovk') || 1), W / H, 4, 9000 * U); cam.up.set(0, 0, 1);
-const ov = Q.get('over');
+const ov = Q.get('over'), top = Q.get('top');
+if (top) { const rp = hdr.rider; cam.up.set(0, 1, 0); cam.position.set(rp[0], rp[1], rp[2] + (+top) * U); cam.lookAt(rp[0], rp[1], rp[2]); }
+else
 if (ov) { const [h, back] = ov.split(',').map(Number); const f = [Math.cos(y), Math.sin(y)];
   cam.position.set(c.pos[0] - f[0] * back * U, c.pos[1] - f[1] * back * U, c.pos[2] + h * U); cam.lookAt(c.pos[0] + f[0] * 120 * U, c.pos[1] + f[1] * 120 * U, c.pos[2]); }
 else { cam.position.set(...c.pos); cam.lookAt(c.pos[0] + Math.cos(p) * Math.cos(y), c.pos[1] + Math.cos(p) * Math.sin(y), c.pos[2] - Math.sin(p)); }

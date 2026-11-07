@@ -18,6 +18,7 @@ local floor, max, min, sqrt, huge = math.floor, math.max, math.min, math.sqrt, m
 Stream.defaults = {
   block = 32, ahead = 450, behind = 60, near_radius = 110,
   lod4_radius = 1200, lod4_fine = 450, lod4_behind = 250, budget_ms = 4, far_step = 2, far_tile = 64, tree_dist = 900,
+  building_dist = 450,  -- buildings with facades (not plain boxes) this far from the rider
   slice_quads = 4000,   -- quads per mesh: one mesh is uploaded at a time, so this bounds the work in one go
 }
 
@@ -105,7 +106,7 @@ function Stream:desired(s, px, py, fx, fy)
   -- (with some slack for cells that already are at this level, so they don't flip at the edge)
   local lod4, was, step_was = {}, self.lod4_now or {}, self.step_now or {}
   local R4, back, fine = cfg.lod4_radius, cfg.lod4_behind, cfg.lod4_fine
-  local steps = {}
+  local steps, details = {}, {}
   for k, c in pairs(self.cells) do
     local mx, my = (c[1] + 0.5) * CS - px, (c[2] + 0.5) * CS - py
     local d = sqrt(mx * mx + my * my)
@@ -115,9 +116,13 @@ function Stream:desired(s, px, py, fx, fy)
       local st = d < fine and 4 or 8
       if step_was[k] and math.abs(d - fine) < 100 then st = step_was[k] end
       steps[k] = st
+      local det = d < cfg.building_dist
+      local dw = (self.detail_now or {})[k]
+      if dw ~= nil and math.abs(d - cfg.building_dist) < 80 then det = dw end
+      details[k] = det
     end
   end
-  self.lod4_now, self.step_now = lod4, steps
+  self.lod4_now, self.step_now, self.detail_now = lod4, steps, details
   local PIECE = 64
   local ppc = floor(CS / PIECE)
   local bpp = floor(PIECE / B)
@@ -125,7 +130,7 @@ function Stream:desired(s, px, py, fx, fy)
     local cov = trans[k]
     local x0, y0 = c[1] * CS, c[2] * CS
     if not cov then
-      want["c:" .. k] = { kind = "c", spec = "w" .. steps[k], step = steps[k], cx = c[1], cy = c[2], x = x0 + CS / 2, y = y0 + CS / 2, r = CS * 0.71 }
+      want["c:" .. k] = { kind = "c", spec = "w" .. steps[k] .. (details[k] and "d" or ""), step = steps[k], detail = details[k], cx = c[1], cy = c[2], x = x0 + CS / 2, y = y0 + CS / 2, r = CS * 0.71 }
     else
       for pj = 0, ppc - 1 do
         for pi = 0, ppc - 1 do
@@ -198,14 +203,36 @@ local function bucket_page(self, P)
   return bk
 end
 
-local function tree_into(self, b, t, ox, oy, scale)
+-- a tree on the ground that is actually drawn (z given); trees close to the track are kept small enough
+-- that their crown doesn't reach over it (t[7] = distance to the track, from the exporter)
+local function tree_into(self, b, t, ox, oy, scale, z)
   local L = self.look
   local info = L.trees[t[4] + 1] or L.trees.default
   local v = t[5] or 0
   local rect = info.rects[v % #info.rects + 1]
   local f = (v * 0.618034) % 1
   local h = (info.hmin + (info.hmax - info.hmin) * f) * (scale or 1)
-  self.M.tree(b, t[1] - ox, t[2] - oy, t[3], rect, h, (v * 2.39996) % 3.14159, 245)
+  local d = t[7]
+  if d then
+    local half = h * rect[5] / rect[6] / 2
+    local room = max(1.0, d - 1.3)
+    if half > room then h = h * room / half end
+  end
+  self.M.tree(b, t[1] - ox, t[2] - oy, z or t[3], rect, h, (v * 2.39996) % 3.14159, 245)
+end
+
+local WATER_DRAFT = 0.3
+-- base of a building: houseboats (a footprint on water) float at the water surface
+local function building_base(self, C, bd)
+  local L = self.look
+  if not C.W then return nil end
+  local sx, sy, n = 0, 0, (#bd - 3) / 2
+  for k = 1, n do sx = sx + bd[2 + 2 * k]; sy = sy + bd[3 + 2 * k] end
+  local cx, cy = sx / n - C.x0, sy / n - C.y0
+  local i, j = floor(cx), floor(cy)
+  if i < 0 or j < 0 or i >= C.tn or j >= C.tn then return nil end
+  if C.T[j * C.tn + i] == L.water_tag then return self.M.water_z(C, cx, cy) - WATER_DRAFT end
+  return nil
 end
 
 local function build_block(self, u)
@@ -216,12 +243,16 @@ local function build_block(self, u)
   local bi, bj = u.bx - u.cx * bpc, u.by - u.cy * bpc
   local ox, oy = C.x0 + bi * B, C.y0 + bj * B
   local g, w, o = M.buffer(), M.buffer(), M.buffer()
-  M.ground_lod1(g, C, bi, bj, B, L.tagcells, L.fallback_cells)
+  M.ground_lod1(g, C, bi, bj, B, L.tagcells, L.fallback_cells, L.water_tag, L.wall_rect, L.wall_tint)
   M.water_lod1(w, C, bi, bj, B, L.water_tag, L.water_frames, L.water_sheet_px)
   local e = bucket_near(self, C)[bi .. "," .. bj]
   if e then
-    for _, bd in ipairs(e.b) do M.building_lod1(o, bd, ox, oy, L.objects, L.buildings, L.roof_tints[bd[1] % #L.roof_tints + 1]) end
-    for _, t in ipairs(e.t) do tree_into(self, o, t, ox, oy, t[6]) end
+    for _, bd in ipairs(e.b) do
+      M.building_lod1(o, bd, ox, oy, L.objects, L.buildings, L.roof_tints[bd[1] % #L.roof_tints + 1], building_base(self, C, bd))
+    end
+    for _, t in ipairs(e.t) do
+      tree_into(self, o, t, ox, oy, t[6], M.surface_at(C.H, C.n, C.n, t[1] - C.x0, t[2] - C.y0, 1))
+    end
   end
   for _, sg in ipairs(self.bridges[u.bx .. "," .. u.by] or {}) do
     local cl = L.tagcells_by_name[sg[8]] or L.fallback_cells
@@ -234,7 +265,8 @@ end
 local function build_cell(self, u)
   local M, L, CS, B = self.M, self.look, self.CS, self.cfg.block
   local key = ckey(u.cx, u.cy)
-  local f, o = M.buffer(), M.buffer()
+  local f, o, bo = M.buffer(), M.buffer(), M.buffer()
+  local detail = u.kind == "q" or u.detail
   local x0, y0 = u.cx * CS, u.cy * CS
   local qi0, qj0, qn = 0, 0, CS        -- in metres inside the cell
   if u.kind == "q" then qi0, qj0, qn = u.pi * u.piece, u.pj * u.piece, u.piece end
@@ -255,16 +287,25 @@ local function build_cell(self, u)
       for bi = floor(qi0 / B), floor((qi0 + qn) / B) - 1 do
         local e = bk[bi .. "," .. bj]
         if e and not covered[bi .. "," .. bj] then
+          local step = u.step or 4
           for _, bd in ipairs(e.b) do
-            local xs, ys, n = M.ring_local(bd, 4, ox, oy)
-            if n >= 3 then
-              local F = L.objects.facades[bd[1] % #L.objects.facades + 1]
-              local tint = L.roof_tints[bd[1] % #L.roof_tints + 1]
-              local rc = L.objects.roof_colour
-              M.building_flat(f, xs, ys, n, bd[3], bd[3] + bd[2], L.objects.white, F.colour, { rc[1] * tint[1], rc[2] * tint[2], rc[3] * tint[3] })
+            local base = building_base(self, C, bd)
+            local tint = L.roof_tints[bd[1] % #L.roof_tints + 1]
+            if detail then
+              M.building_lod1(bo, bd, ox, oy, L.objects, L.buildings, tint, base)
+            else
+              local xs, ys, n = M.ring_local(bd, 4, ox, oy)
+              if n >= 3 then
+                local F = L.objects.facades[bd[1] % #L.objects.facades + 1]
+                local rc = L.objects.roof_colour
+                local b0 = base or bd[3]
+                M.building_flat(f, xs, ys, n, b0, b0 + bd[2], L.objects.white, F.colour, { rc[1] * tint[1], rc[2] * tint[2], rc[3] * tint[3] })
+              end
             end
           end
-          for _, t in ipairs(e.t) do tree_into(self, o, t, ox, oy, t[6]) end
+          for _, t in ipairs(e.t) do
+            tree_into(self, o, t, ox, oy, t[6], M.surface_at(C.H, C.n, C.n, t[1] - C.x0, t[2] - C.y0, step))
+          end
         end
       end
     end
@@ -287,12 +328,21 @@ local function build_cell(self, u)
       end
       for _, bx in ipairs(e.b) do
         local style = floor(bx[1] * 7 + bx[2] * 13) % nf
-        M.box_flat(f, bx, ox, oy, L.objects.facades[style + 1].colour, roofs[style % #roofs + 1])
+        if detail then
+          local xs, ys = M.box_ring(bx, 0, 0)
+          local bd = { style, bx[6], bx[7], xs[1], ys[1], xs[2], ys[2], xs[3], ys[3], xs[4], ys[4] }
+          M.building_lod1(bo, bd, ox, oy, L.objects, L.buildings, L.roof_tints[style % #L.roof_tints + 1])
+        else
+          M.box_flat(f, bx, ox, oy, L.objects.facades[style + 1].colour, roofs[style % #roofs + 1])
+        end
       end
-      for _, t in ipairs(e.t) do tree_into(self, o, t, ox, oy, 1) end
+      local st = max(1, floor((u.step or 4) / P.res))
+      for _, t in ipairs(e.t) do
+        tree_into(self, o, t, ox, oy, 1, M.surface_at(P.H, P.n, P.n, (t[1] - P.x0) / P.res, (t[2] - P.y0) / P.res, st))
+      end
     end
   end
-  return { { f, "flat" }, { o, "objects_far" } }, ox, oy
+  return { { f, "flat" }, { bo, "objects" }, { o, "objects_far" } }, ox, oy
 end
 
 local function build_l16(self, u)

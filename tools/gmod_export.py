@@ -7,7 +7,8 @@ Writes <out>/<route id>/:
                      chunk and page lists, far grid info, bridges
   c_X_Y.dat          near chunk (256 m): header line (JSON) + heights 257x257 u16 (1 m, rows south->north)
                      + ground tags 256x256 per 1 m cell (RLE: count u8, tag u8) + water surface 33x33 u16 (8 m)
-  c_X_Y.txt          near chunk objects: buildings [style, height, base, x1, y1, x2, y2, ...], trees [x, y, z, kind, v, s]
+  c_X_Y.txt          near chunk objects: buildings [style, height, base, x1, y1, x2, y2, ...],
+                     trees [x, y, z, kind, v, scale, distance to the track] (none on roads)
   p_X_Y.dat / .txt   mid page (1024 m): heights 257x257 (4 m), tags 256x256 per 4 m cell, water 129x129 (8 m);
                      objects: boxes [x, y, length, width, angle, height, base], trees [x, y, z, kind, v]
   l_X_Y.dat          every page the route touches at 16 m: heights 65x65 + tags 64x64 (from near data where
@@ -77,6 +78,13 @@ def main(src, out_root):
         if k not in kinds: kinds.append(k)
         return kinds.index(k)
 
+    # the track at 1 m: each tree gets its distance to it (the renderer keeps crowns off the track)
+    from scipy.spatial import cKDTree
+    tx, ty = np.asarray(T['x'], float), np.asarray(T['y'], float)
+    fr = np.linspace(0, 1, 6)[:-1]
+    track_kd = cKDTree(np.stack([(tx[:-1, None] * (1 - fr) + tx[1:, None] * fr).ravel(),
+                                 (ty[:-1, None] * (1 - fr) + ty[1:, None] * fr).ravel()], 1))
+    no_trees = {TID[t] for t in ('asphalt', 'cycleway', 'rail', 'parking') if t in TID}   # no trees in roads
     near = {}
     for c in R['chunks']:
         C = json.load(open(os.path.join(src, 'chunks', c['file'])))
@@ -98,8 +106,15 @@ def main(src, out_root):
         for b in C.get('buildings', []):
             ring = [round(v, 2) for p in b['p'] for v in p]
             objs['buildings'].append([b.get('v', 0) % 6, round(b['h'], 1), round(b['base'], 2)] + ring)
-        for t in C.get('trees', []):
-            objs['trees'].append([round(t['x'], 1), round(t['y'], 1), round(t['z'], 2), kind_id(t['kind']), t.get('v', 0), round(t.get('s', 1.0), 2)])
+        trees = C.get('trees', [])
+        if trees:
+            dist, _ = track_kd.query(np.array([(t['x'], t['y']) for t in trees]))
+            res = C['ground']['res']; nG = cls.shape[0]
+            for t, d in zip(trees, dist):
+                gi = min(nG - 1, max(0, int((t['x'] - C['x0']) / res))); gj = min(nG - 1, max(0, int((t['y'] - C['y0']) / res)))
+                if int(cls[gj, gi]) in no_trees: continue
+                objs['trees'].append([round(t['x'], 1), round(t['y'], 1), round(t['z'], 2), kind_id(t['kind']), t.get('v', 0),
+                                      round(t.get('s', 1.0), 2), round(float(d), 1)])
         json.dump(objs, open(os.path.join(out, f"c_{c['cx']}_{c['cy']}.txt"), 'w'), separators=(',', ':'))
 
     mid = {}
