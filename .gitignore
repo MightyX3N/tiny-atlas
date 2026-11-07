@@ -13,7 +13,7 @@
 /rom_in/
 # tooling
 __pycache__/
-node_modules/
+node_modules
 .wowe_tiled_tmp/
 *.pyc
 .DS_Store
