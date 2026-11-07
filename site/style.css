@@ -1,0 +1,188 @@
+/* Tiny Atlas: an atlas of real places, drawn tiny. Palette from the logo. */
+:root {
+  --ocean: #10203a;
+  --panel: #17305a;
+  --deep: #0b1528;
+  --parchment: #f3ead2;
+  --muted: #a9bad0;
+  --brass: #dba63a;
+  --brass-hi: #f7dc7a;
+  --route: #e8402e;
+  --green: #6cb544;
+  --px: 'Pixelify Sans', system-ui, sans-serif;
+  --body: 'Atkinson Hyperlegible', system-ui, sans-serif;
+  --measure: 68ch;
+}
+
+* { box-sizing: border-box; }
+html { background: var(--ocean); }
+body {
+  margin: 0;
+  background: var(--ocean);
+  color: var(--parchment);
+  font: 400 1.0625rem/1.6 var(--body);
+  -webkit-font-smoothing: antialiased;
+}
+img { display: block; max-width: 100%; height: auto; }
+a { color: var(--brass-hi); text-underline-offset: 3px; text-decoration-thickness: 2px; }
+a:hover { color: #fff; }
+:focus-visible { outline: 3px solid var(--brass-hi); outline-offset: 3px; }
+
+h2, h3 { font-family: var(--px); font-weight: 600; line-height: 1.15; margin: 0; }
+h2 { font-size: clamp(1.9rem, 1.3rem + 2.2vw, 2.9rem); letter-spacing: 0.01em; }
+h3 { font-size: 1.3rem; color: var(--brass-hi); margin-bottom: 0.4rem; }
+p { margin: 0; }
+
+/* ---------------- hero: a real place, with the route drawn across it ---------------- */
+.hero {
+  position: relative;
+  min-height: min(92vh, 900px);
+  display: grid;
+  align-items: end;
+  overflow: hidden;
+  isolation: isolate;
+}
+.hero-shot {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  object-fit: cover;
+  z-index: -2;
+  image-rendering: pixelated;
+}
+.hero::before {
+  content: "";
+  position: absolute; inset: 0; z-index: -1;
+  background:
+    linear-gradient(90deg, rgba(11, 21, 40, 0.92) 0%, rgba(11, 21, 40, 0.72) 38%, rgba(11, 21, 40, 0.05) 70%),
+    linear-gradient(0deg, var(--ocean) 0%, rgba(16, 32, 58, 0) 30%);
+}
+.route { position: absolute; inset: 0; width: 100%; height: 100%; z-index: -1; pointer-events: none; }
+.route-line {
+  fill: none;
+  stroke: var(--route);
+  stroke-width: 6;
+  stroke-dasharray: 18 12;
+  stroke-linecap: square;
+  shape-rendering: crispEdges;
+}
+.pin { animation: pin-drop 0.5s steps(4) 2.3s both; }
+@media (prefers-reduced-motion: no-preference) {
+  .route-line { stroke-dashoffset: 0; animation: draw 2.4s steps(24) 0.3s both; }
+}
+@keyframes draw {
+  from { clip-path: inset(0 100% 0 0); }
+  to { clip-path: inset(0 0 0 0); }
+}
+@keyframes pin-drop {
+  from { opacity: 0; transform: translate(1010px, 206px); }
+  to { opacity: 1; transform: translate(1010px, 236px); }
+}
+@media (prefers-reduced-motion: reduce) { .pin { animation: none; } }
+
+.hero-text {
+  width: min(100%, 1180px);
+  margin: 0 auto;
+  padding: 6rem 1.25rem 5.5rem;
+}
+.mark { display: flex; align-items: center; gap: 1.1rem; margin-bottom: 1.6rem; }
+.mark > img, .mark h1 img { image-rendering: pixelated; }
+.mark h1 { margin: 0; }
+.mark h1 img { width: clamp(220px, 34vw, 355px); }
+.pitch {
+  font-family: var(--px);
+  font-size: clamp(1.45rem, 1.05rem + 1.6vw, 2.2rem);
+  line-height: 1.2;
+  max-width: 22ch;
+  margin-bottom: 1rem;
+}
+.sub { color: #dfe6ef; max-width: 54ch; margin-bottom: 1.8rem; }
+
+.actions { display: flex; flex-wrap: wrap; gap: 0.8rem; margin-bottom: 1.6rem; }
+.btn {
+  font-family: var(--px);
+  font-size: 1.1rem;
+  text-decoration: none;
+  color: var(--parchment);
+  padding: 0.7rem 1.15rem 0.75rem;
+  background: var(--panel);
+  /* a pixel frame: hard-edged, no rounded corners, a 4 px drop like the sprites */
+  box-shadow: inset 0 0 0 3px #2a4d82, 4px 4px 0 var(--deep);
+}
+.btn.primary { background: var(--brass); color: var(--deep); box-shadow: inset 0 0 0 3px var(--brass-hi), 4px 4px 0 var(--deep); }
+.btn:hover { transform: translate(-1px, -1px); box-shadow: inset 0 0 0 3px var(--brass-hi), 5px 5px 0 var(--deep); color: inherit; }
+.btn.primary:hover { color: var(--deep); }
+.btn:active { transform: translate(3px, 3px); box-shadow: inset 0 0 0 3px var(--brass-hi), 1px 1px 0 var(--deep); }
+
+.status { color: var(--muted); font-size: 0.95rem; display: flex; align-items: center; gap: 0.55rem; }
+.dot { width: 10px; height: 10px; background: var(--brass); box-shadow: 0 0 0 2px var(--deep); flex: none; }
+
+.hero-place {
+  position: absolute; right: 1.25rem; bottom: 1.4rem;
+  font-family: var(--px); font-size: 1rem;
+  background: rgba(11, 21, 40, 0.8);
+  padding: 0.35rem 0.7rem;
+  box-shadow: inset 0 0 0 2px var(--route);
+}
+.hero-place span { color: var(--muted); margin-left: 0.5rem; }
+
+/* ---------------- sections ---------------- */
+main > section { width: min(100%, 1180px); margin: 0 auto; padding: 4.5rem 1.25rem; }
+.lede { color: var(--muted); max-width: var(--measure); margin: 0.8rem 0 2.2rem; }
+
+/* atlas plates: each picture is a real place, captioned like a plate in an atlas */
+.grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.6rem; }
+.plate { margin: 0; background: var(--deep); padding: 10px; box-shadow: inset 0 0 0 2px #2a4d82; }
+.plate.wide { grid-column: span 2; }
+.plate img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; image-rendering: pixelated; }
+.plate figcaption { padding: 0.8rem 0.3rem 0.25rem; color: #d7deea; font-size: 0.97rem; }
+.plate figcaption b { font-family: var(--px); font-weight: 600; font-size: 1.12rem; color: var(--parchment); margin-right: 0.6rem; }
+.plate figcaption span { font-family: var(--px); color: var(--route); margin-right: 0.6rem; white-space: nowrap; }
+.plate figcaption span::after { content: ""; display: block; }
+@media (min-width: 640px) { .plate figcaption span::after { display: none; } }
+
+/* how: a real sequence, so it gets numbers */
+.how h2 { margin-bottom: 2rem; }
+.steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 2rem; counter-reset: step; }
+.steps li { counter-increment: step; border-top: 4px dashed var(--route); padding-top: 1.2rem; }
+.steps li::before {
+  content: counter(step);
+  font-family: var(--px); font-weight: 600; font-size: 1.1rem;
+  color: var(--deep); background: var(--brass);
+  display: inline-grid; place-items: center;
+  width: 2rem; height: 2rem; margin-bottom: 0.8rem;
+  box-shadow: 3px 3px 0 var(--deep);
+}
+.steps p { color: #d7deea; max-width: 40ch; }
+
+.features h2 { margin-bottom: 2rem; }
+.cols { display: grid; grid-template-columns: repeat(2, 1fr); gap: 2.2rem 3.5rem; }
+.cols p { color: #d7deea; max-width: 52ch; }
+
+.road h2 { margin-bottom: 1.8rem; }
+.road-cols { display: grid; grid-template-columns: 1fr 1.3fr; gap: 3rem; }
+.road ul { margin: 0; padding: 0; list-style: none; }
+.road li { padding: 0.45rem 0 0.45rem 1.6rem; position: relative; color: #d7deea; }
+.road li::before { content: ""; position: absolute; left: 0; top: 0.95rem; width: 9px; height: 9px; background: var(--green); box-shadow: 2px 2px 0 var(--deep); }
+.road-cols > div:last-child li::before { background: transparent; box-shadow: inset 0 0 0 2px var(--brass); }
+
+.foot { border-top: 4px solid var(--deep); padding: 2.2rem 1.25rem 3rem; width: min(100%, 1180px); margin: 0 auto; color: var(--muted); font-size: 0.92rem; }
+.foot-mark { display: flex; align-items: center; gap: 0.7rem; font-family: var(--px); font-size: 1.1rem; color: var(--parchment); margin-bottom: 0.9rem; }
+.foot-mark img { image-rendering: pixelated; }
+.foot p { max-width: 90ch; }
+
+/* ---------------- small screens ---------------- */
+@media (max-width: 860px) {
+  .steps, .cols, .road-cols { grid-template-columns: 1fr; gap: 2rem; }
+  .hero::before {
+    background: linear-gradient(0deg, var(--ocean) 0%, rgba(11, 21, 40, 0.86) 45%, rgba(11, 21, 40, 0.35) 100%);
+  }
+  .hero-text { padding-top: 10rem; padding-bottom: 5.5rem; }
+  .route { display: none; }
+}
+@media (max-width: 640px) {
+  .grid { grid-template-columns: 1fr; }
+  .plate.wide { grid-column: auto; }
+  .mark > img { width: 64px; height: 64px; }
+  .hero-place { left: 1.25rem; right: auto; bottom: 1rem; font-size: 0.9rem; }
+  main > section { padding: 3.2rem 1.25rem; }
+}
