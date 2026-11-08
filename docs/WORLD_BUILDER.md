@@ -38,9 +38,9 @@ up exactly to the cell's area (no gaps, no overlaps), every edge forced in, ever
 cell in LuaJIT on the build machine. LuaJIT with the JIT switched off is about as fast (the code is short and
 branchy). Pictures of every tile were checked by eye (`tools/atlascheck/sheets.py`).
 
-**Found in the data:** OpenFreeMap's zoom-14 tiles leave out most buildings, and often the minor streets, in parts
-of dense cities (central Lyon, Manhattan, Rome, Zurich, Los Angeles). The ground built from them is correct, but
-the data itself is incomplete there. See the design doc's open questions.
+**Note on the test data:** the 279 cached tiles came from the old build cache, where an earlier tool had stripped
+them down (buildings were optional and often missing). The full tiles GMod downloads have the buildings: central
+Amsterdam has 116 building features instead of 66 and builds at about 100 ms per cell.
 
 ## Running in Garry's Mod
 
