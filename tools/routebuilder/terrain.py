@@ -30,6 +30,23 @@ def chunks_for(T, corridor=CORRIDOR):
 
 
 # ------------------------------------------------------------------ global preparation
+def merge_bridge_areas(rings):
+    """Bridge outlines arrive cut at tile edges: join the pieces into one polygon per bridge."""
+    from shapely.geometry import Polygon as _P
+    from shapely.ops import unary_union
+    polys = []
+    for r in rings:
+        try:
+            q = _P(r)
+            if not q.is_valid: q = q.buffer(0)
+            if q.area > 1: polys.append(q)
+        except Exception:
+            pass
+    if not polys: return []
+    u = unary_union([q.buffer(0.1) for q in polys]).buffer(-0.1)
+    return [g for g in getattr(u, 'geoms', [u]) if g.area > 4]
+
+
 class World:
     def __init__(self, feats, T, dem_sample, sea_from_terrain=False, grade=True):
         self.T = T; self.dem = dem_sample; self.sea_from_terrain = sea_from_terrain
@@ -38,8 +55,14 @@ class World:
         self.roads = []      # (feature, tag, width, sidewalk)
         self.rails = []; self.bridges = []; self.buildings = []; self.trees = []; self.tree_rows = []; self.places = []
         self.river_lines = []; self.ocean = []; self.flow_lines = []
+        bridge_parts = []
         for e in feats:
             g = e['g']
+            if g.get('man_made') == 'bridge':
+                rings = [e['p']] if e['t'] == 'w' else join_rings(e['m'])['outer'] if e['t'] == 'r' else []
+                for ring in rings:
+                    if len(ring) >= 4: bridge_parts.append(ring)
+                continue
             if e['t'] == 'n':
                 if g.get('natural') == 'tree': self.trees.append({'x': e['p'][0], 'y': e['p'][1], 'g': g})
                 elif g.get('place') in ('city', 'town', 'village', 'hamlet', 'suburb', 'neighbourhood', 'quarter'):
@@ -82,6 +105,7 @@ class World:
                 for ring in rr['outer']:
                     self.areas.append((AREA_RANK.get(tag, 3), tag, ring, rr['inner']))
         self.areas.sort(key=lambda a: a[0])
+        self.bridge_areas = merge_bridge_areas(bridge_parts)
         self._bboxes()
         self.strokes = build_strokes(self.roads) if grade else []
         if grade: self._grade_strokes()

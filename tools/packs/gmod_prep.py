@@ -65,6 +65,26 @@ def avg_rgb(im):
     return [int(round(x)) for x in (a[m, :3].mean(0) if m.any() else a[:, :3].mean(0))]
 
 
+def trim(im):
+    """Crop a sprite to its visible pixels: the bottom of the quad is then where the trunk (or bush) meets
+    the ground, so nothing floats on the transparent rows under it."""
+    a = np.asarray(im)[..., 3]
+    ys, xs = np.nonzero(a > 40)
+    if len(ys) == 0: return im
+    return im.crop((int(xs.min()), int(ys.min()), int(xs.max()) + 1, int(ys.max()) + 1))
+
+
+def trunk_x(im):
+    """Where the trunk meets the ground, as a fraction of the width: the middle of the visible pixels in the
+    bottom rows. Trees are placed by this point, not by the middle of the picture."""
+    a = np.asarray(im)[..., 3] > 40
+    h = a.shape[0]
+    for rows in (max(2, h // 25), max(4, h // 10), h):
+        ys, xs = np.nonzero(a[h - rows:])
+        if len(xs): return round(float((xs.min() + xs.max()) / 2 + 0.5) / a.shape[1], 3)
+    return 0.5
+
+
 def pad_into(dst, im, x, y, p):
     """Paste im at (x, y) and copy its edge pixels p px outward (no bleeding with point sampling)."""
     w, h = im.size
@@ -151,7 +171,7 @@ def main(pack_dir):
 
     def build_objects(name, trees, props):
         files = set(); strings(trees, files); strings(props, files); allfiles.update(files)
-        ims = {f: Image.open(os.path.join(mat, f)).convert('RGBA') for f in sorted(files)}
+        ims = {f: trim(Image.open(os.path.join(mat, f)).convert('RGBA')) for f in sorted(files)}
         ims.update(shared)
         sizes = {k: im.size for k, im in ims.items()}
         OW = 512
@@ -165,7 +185,7 @@ def main(pack_dir):
             im = ims[k]; w, h = im.size
             if k.startswith('facade') or k in ('roof', 'white'): pad_into(O, im, x, y, OP)
             else: O.paste(im, (x, y))
-            cell[k] = [x / OW, y / OH, (x + w) / OW, (y + h) / OH, w, h]
+            cell[k] = [x / OW, y / OH, (x + w) / OW, (y + h) / OH, w, h, trunk_x(im)]
         O.save(os.path.join(out_dir, f'objects_{name}.png'))
         return {'png': f'tinyatlas/packs/{pid}/gmod/objects_{name}.png', 'size': [OW, OH],
                 'sprites': {f: cell[f] for f in sorted(files)},

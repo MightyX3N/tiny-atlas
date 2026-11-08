@@ -169,9 +169,15 @@ coping), `parapet` (the low wall along each side, coping at the top of the tile)
 `tile_metres` (1.5) is how much one part tile covers, `parapet_height` (1.0) and `deck_thickness` (0.7) in metres.
 The default pack's parts are drawn by `tools/packs/bridge_art.py`.
 
-A renderer builds each bridge in `bridges.json` as its own object: the road surface (the bridge's ground tag),
-parapets, deck edges, brick walls down to an arch springing at the water (or a flat slab when it crosses
-something else), and end walls. Ground cells inside a deck that are tagged water are always opened to the
-water. Bridges mapped side by side (carriageway, cycle lane, footpath) are joined: they share the deck height
-(the one the route rides on wins), sides within 1.5 m of another deck reach over to it, and only outer sides
-get parapets. Where the route runs over a bridge the deck is at the ride height.
+`bridges.json` has one entry per bridge (not per lane): `outline` (the whole bridge, from OpenStreetMap's
+`man_made=bridge` outline where there is one, else the lanes mapped side by side merged into one shape),
+`p`/`pz`/`w`/`tag` (the axis: the lane the route rides, or the longest, with the deck height and road surface),
+`kind` (`arch` for a short water crossing or `bridge:structure=arch`, else `beam`), `lanes`, `from_osm_outline`
+and `material` (when OSM has it). Every lane of a bridge gets its height from the axis, so a bridge has one deck
+height.
+
+A renderer builds each bridge as its own object fitted to its outline: the road surface over the whole outline,
+a parapet along the sides where there is a drop beside the deck (water or ground more than 1 m below; none where
+it meets a street), a stone deck edge, brick walls down to the underside (an arch springing at the water, or a
+flat slab with pillars every ~18 m), and end walls. Ground cells inside the outline that are tagged water are
+always opened to the water. Where the route runs over a bridge the deck is at the ride height.

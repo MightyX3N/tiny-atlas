@@ -129,6 +129,7 @@ function W.Start(route_id, mode, opts)
   W.speed = (opts.kmh or 30) / 3.6
   W.t = 0
   W.loading = true
+  W.plan_t = 0          -- plan on the first frame (a second ride in the same session must not start "loaded")
   W.load_t0 = t0
   W.O = nil
   W.perf = { frames = {}, lua = {}, build = {}, draws = 0, quads = 0, log = {}, sec = 0, t0 = nil }

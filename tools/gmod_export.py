@@ -61,6 +61,22 @@ def read_h(path, n, base, scale, rows='north_to_south'):
     return a[::-1] if rows == 'north_to_south' else a
 
 
+def bridge_out(b):
+    """A bridge for the renderer: its axis (the lane the route rides, with the deck height), its outline (the
+    whole bridge) and the outline shrunk 0.4 m (the ground opened under it), and its kind."""
+    from shapely.geometry import Polygon, LineString
+    ring = b.get('outline')
+    if not ring:      # an old route package: a deck the width of the lane
+        ring = list(LineString(b['p']).buffer(b['w'] / 2, cap_style=2).exterior.coords)
+    poly = Polygon(ring)
+    if not poly.exterior.is_ccw: poly = Polygon(list(poly.exterior.coords)[::-1])
+    inner = poly.buffer(-0.4)
+    inner = max(getattr(inner, 'geoms', [inner]), key=lambda g: g.area) if not inner.is_empty else poly
+    flat = lambda g: [round(v, 2) for q in list(g.exterior.coords)[:-1] for v in q]
+    return {'p': [v for q in b['p'] for v in q], 'pz': b['pz'], 'w': b['w'], 'tag': b.get('tag', 'asphalt'),
+            'outline': flat(poly), 'inner': flat(inner), 'kind': b.get('kind', 'arch'), 'material': b.get('material')}
+
+
 def header(d):
     return (json.dumps(d, separators=(',', ':')) + '\n').encode()
 
@@ -112,7 +128,7 @@ def main(src, out_root):
             res = C['ground']['res']; nG = cls.shape[0]
             for t, d in zip(trees, dist):
                 gi = min(nG - 1, max(0, int((t['x'] - C['x0']) / res))); gj = min(nG - 1, max(0, int((t['y'] - C['y0']) / res)))
-                if int(cls[gj, gi]) in no_trees: continue
+                if int(cls[gj, gi]) in no_trees or d < 3.0: continue      # not in roads, not in the path
                 objs['trees'].append([round(t['x'], 1), round(t['y'], 1), round(t['z'], 2), kind_id(t['kind']), t.get('v', 0),
                                       round(t.get('s', 1.0), 2), round(float(d), 1)])
         json.dump(objs, open(os.path.join(out, f"c_{c['cx']}_{c['cy']}.txt"), 'w'), separators=(',', ':'))
@@ -184,7 +200,7 @@ def main(src, out_root):
              'chunk_size': CS, 'page_size': PS,
              'chunks': [[c['cx'], c['cy']] for c in R['chunks']], 'pages': [[p['px'], p['py']] for p in R['mid']['pages']],
              'l16': l16, 'track': {k: T[k] for k in ('step', 'n', 's', 'x', 'y', 'z', 'grade', 'ground', 'bridge')},
-             'bridges': [{'p': [v for q in b['p'] for v in q], 'pz': b['pz'], 'w': b['w'], 'tag': b.get('tag', 'asphalt')} for b in bridges],
+             'bridges': [bridge_out(b) for b in bridges],
              'climate': R.get('climate')}
     json.dump(route, open(os.path.join(out, 'route.txt'), 'w'), separators=(',', ':'))
     tot = sum(os.path.getsize(os.path.join(out, f)) for f in os.listdir(out))

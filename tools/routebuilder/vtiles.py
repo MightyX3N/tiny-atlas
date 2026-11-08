@@ -129,6 +129,7 @@ def _parts(g):
 def _tags(layer, p):
     c, sc = p.get('class'), p.get('subclass')
     if layer == 'transportation':
+        if c == 'bridge': return {'man_made': 'bridge'}          # the outline of a whole bridge (all its lanes)
         t = {}
         if c in ROAD_CLASS: t['highway'] = ROAD_CLASS[c]
         elif c == 'path': t['highway'] = PATH_SUB.get(sc, 'path')

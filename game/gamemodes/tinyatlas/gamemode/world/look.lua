@@ -31,6 +31,13 @@ function Look.build(pack, atlas, rt, season)
     if name == "water" then L.water_tag = i - 1 end
   end
   L.fallback_cells = fallback
+  -- hard ground: a tree standing on it gets a tree pit
+  L.hard = {}
+  for i, name in ipairs(rt.tags) do
+    if name == "paving" or name == "cobble" or name == "urban" or name == "asphalt" or name == "parking"
+      or name == "cycleway" or name == "gravel" then L.hard[i - 1] = true end
+  end
+  L.pit_soil = (cells_by_name.dirt or cells_by_name.forest_floor or fallback)[1]
   L.fallback_colour = colour_by_name.grass or { 100, 140, 80 }
   L.water_tag = L.water_tag or -1
   L.water_colour = atlas.water_colour or { 60, 110, 150 }
@@ -62,6 +69,7 @@ function Look.build(pack, atlas, rt, season)
   L.bridge = { wall = AB.wall or plain, stone = AB.stone or AB.wall or plain, parapet = AB.parapet or AB.wall or plain,
                arch = AB.arch or AB.wall or plain, tile = PB.tile_metres or 1.5, parapet_h = PB.parapet_height or 1.0,
                thick = PB.deck_thickness or 0.7 }
+  L.pit_kerb = L.bridge.stone
   -- trees: per route tree kind
   local trees = {}
   for k, v in pairs(pack.trees or {}) do trees[k] = v end

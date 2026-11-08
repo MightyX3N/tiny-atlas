@@ -244,7 +244,81 @@ def build(gpx_path, out_dir, cache_dir, plan_path=None, max_km=None, dem_zoom=13
         pz = base + arch + 0.2
         bridges.append({'p': [[round(float(a), 2), round(float(c), 2)] for a, c in zip(xs, ys)],
                         'pz': [round(float(z), 2) for z in pz], 'w': round(b['w'], 1), 'tag': b['tag'],
-                        'name': b['g'].get('name', '')})
+                        'name': b['g'].get('name', ''), '_g': b['g']})
+
+    # ---------------- one bridge per crossing: OSM's outline of the whole bridge where there is one, else the
+    # lanes mapped side by side (carriageway, cycle lane, footpath) merged. Each gets one height profile, from the
+    # lane the route rides on (or the longest), and a kind that picks its parts: 'arch' for a short water
+    # crossing (or bridge:structure=arch), 'beam' otherwise.
+    from shapely.geometry import LineString as _LS, Polygon as _PG, Point as _PT
+    from shapely.ops import unary_union as _union
+    bridge_groups = []
+    if bridges:
+        lanes = []
+        for i, b in enumerate(bridges):
+            ls = _LS(b['p'])
+            lanes.append({'i': i, 'ls': ls, 'poly': ls.buffer(b['w'] / 2, cap_style=2), 'b': b,
+                          'g': b.get('_g', {})})
+        areas = list(getattr(W, 'bridge_areas', []))
+        owner = {}
+        for L_ in lanes:
+            best, ba = None, 0.0
+            for ai, a in enumerate(areas):
+                if not a.intersects(L_['poly']): continue
+                ov = a.intersection(L_['poly']).area / max(L_['poly'].area, 1e-6)
+                if ov > ba: best, ba = ai, ov
+            if best is not None and ba > 0.4: owner[L_['i']] = ('a', best)
+        # lanes without an outline: join those running side by side (parallel, within 2 m of each other)
+        free = [L_ for L_ in lanes if L_['i'] not in owner]
+        parent = {L_['i']: L_['i'] for L_ in free}
+        def find(k):
+            while parent[k] != k: parent[k] = parent[parent[k]]; k = parent[k]
+            return k
+        def heading(ls):
+            (x0, y0), (x1, y1) = ls.coords[0], ls.coords[-1]
+            return math.atan2(y1 - y0, x1 - x0)
+        for ai_, A in enumerate(free):
+            for B in free[ai_ + 1:]:
+                if A['poly'].distance(B['poly']) > 2.0: continue
+                d = abs((heading(A['ls']) - heading(B['ls']) + math.pi / 2) % math.pi - math.pi / 2)
+                if d < math.radians(30): parent[find(A['i'])] = find(B['i'])
+        for L_ in free: owner[L_['i']] = ('l', find(L_['i']))
+        groups = {}
+        for L_ in lanes: groups.setdefault(owner[L_['i']], []).append(L_)
+        trk_pts = np.stack([T['x'], T['y']], 1)
+        for key, mem in groups.items():
+            if key[0] == 'a':
+                outline = _union([areas[key[1]]] + [m['poly'] for m in mem]).buffer(0.3).buffer(-0.3)
+            else:
+                outline = _union([m['poly'].buffer(1.0) for m in mem]).buffer(-1.0)
+            if outline.geom_type != 'Polygon':
+                outline = max(getattr(outline, 'geoms', [outline]), key=lambda g: g.area)
+            outline = outline.simplify(0.2)
+            # the lane the route rides on carries the height, else the longest
+            minx, miny, maxx, maxy = outline.bounds
+            near_t = trk_pts[(trk_pts[:, 0] > minx - 3) & (trk_pts[:, 0] < maxx + 3) & (trk_pts[:, 1] > miny - 3) & (trk_pts[:, 1] < maxy + 3)]
+            def ride_score(m):
+                if len(near_t) == 0: return 1e9
+                return float(np.mean([m['ls'].distance(_PT(q)) for q in near_t]))
+            axis = min(mem, key=lambda m: (ride_score(m), -m['ls'].length)) if len(near_t) else max(mem, key=lambda m: m['ls'].length)
+            ab = axis['b']
+            # every lane takes its height from the axis (one deck, one height)
+            ax_ls, ax_d = axis['ls'], np.concatenate([[0], np.cumsum(np.hypot(*np.diff(np.array(ab['p']), axis=0).T))])
+            for m in mem:
+                if m is axis: continue
+                m['b']['pz'] = [round(float(np.interp(ax_ls.project(_PT(q)), ax_d, ab['pz'])), 2) for q in m['b']['p']]
+            # kind: structure from OSM when known, else a short water crossing is an arch
+            struct = next((m['g'].get('bridge:structure') for m in mem if m['g'].get('bridge:structure')), None)
+            sdv = np.nan_to_num(lookup('sd', np.array([q[0] for q in ab['p']]), np.array([q[1] for q in ab['p']]), TR.HRES, 5.0), nan=5.0)
+            wet = sdv < 0
+            span = float(wet.sum()) * (ax_ls.length / max(len(ab['p']) - 1, 1))
+            kind = 'arch' if struct == 'arch' or (struct is None and wet.any() and span <= 40) else 'beam'
+            ring = [[round(float(x), 2), round(float(y), 2)] for x, y in outline.exterior.coords]
+            bridge_groups.append({'p': ab['p'], 'pz': ab['pz'], 'w': ab['w'], 'tag': ab['tag'], 'name': ab.get('name', ''),
+                                  'outline': ring, 'kind': kind, 'lanes': len(mem), 'from_osm_outline': key[0] == 'a',
+                                  'material': next((m['g'].get('bridge:material') for m in mem if m['g'].get('bridge:material')), None)})
+        log(f'{len(bridge_groups)} bridges ({sum(1 for g in bridge_groups if g["from_osm_outline"])} from OSM outlines) '
+            f'from {len(bridges)} bridge lanes; {sum(1 for g in bridge_groups if g["kind"] == "arch")} arches')
 
     # ---------------- chunks pass C: abutments under bridge ends + deck surface on the ground there
     for k, c in C.items():
@@ -538,7 +612,7 @@ def build(gpx_path, out_dir, cache_dir, plan_path=None, max_km=None, dem_zoom=13
              'z': _r(T['zc'], 2), 'z_gpx': _r(T['z'], 2), 'grade': _r(T['grade'] * 100, 1),
              'ground': tag_under.tolist(), 'bridge': [int(v) for v in on_bridge], 'ferry': [int(v) for v in ferry]}
     json.dump(track, open(os.path.join(out_dir, 'track.json'), 'w'), separators=(',', ':'))
-    json.dump(bridges, open(os.path.join(out_dir, 'bridges.json'), 'w'), separators=(',', ':'))
+    json.dump(bridge_groups if bridges else [], open(os.path.join(out_dir, 'bridges.json'), 'w'), separators=(',', ':'))
     prof_i = np.linspace(0, len(T['s']) - 1, 240).astype(int)
     route = {
         'format': FORMAT_VERSION, 'builder': BUILDER_VERSION, 'built': time.strftime('%Y-%m-%d'),
