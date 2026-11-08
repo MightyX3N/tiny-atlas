@@ -53,6 +53,14 @@ local function run_jobs()
   local fn = FrameNumber and FrameNumber() or SysTime()
   if fn == last_frame then return end
   last_frame = fn
+  -- say what is going on every few seconds, without being asked
+  local job = jobs[1]
+  local now = RealTime and RealTime() or SysTime()
+  if not job.next_note then job.next_note = now + 3 end
+  if now >= job.next_note then
+    job.next_note = now + 3
+    print(string.format("[Tiny Atlas] still working: %s (%.1f s CPU so far)", job.where or "starting", job.cpu))
+  end
   local frame_end = SysTime() + budget:GetFloat() / 1000
   while #jobs > 0 and SysTime() < frame_end do
     local job = jobs[1]
@@ -63,6 +71,7 @@ local function run_jobs()
     job.cpu = job.cpu + (SysTime() - t0)
     job.slices = job.slices + 1
     if not ok then
+      print("[Tiny Atlas] FAILED while " .. (job.where or "starting") .. ": " .. tostring(err))
       ErrorNoHalt("[Tiny Atlas] build job failed: " .. tostring(err) .. "\n")
       table.remove(jobs, 1)
     elseif coroutine.status(job.co) == "dead" then
@@ -74,13 +83,7 @@ end
 hook.Add("Think", "TinyAtlasBuildJobs", run_jobs)
 hook.Add("PostRender", "TinyAtlasBuildJobs", run_jobs)
 
-concommand.Add("ta_atlas_status", function()
-  print(string.format("[Tiny Atlas] %d build job(s) waiting", #jobs))
-  for i, job in ipairs(jobs) do
-    print(string.format("  job %d: %s, %d slices, %.0f ms CPU, %s", i, coroutine.status(job.co), job.slices,
-      job.cpu * 1000, job.where or "not started"))
-  end
-end)
+
 
 local function add_job(fn)
   local job = { cpu = 0, slices = 0 }
@@ -110,6 +113,7 @@ concommand.Add("ta_buildbench", function(_, _, args)
   local ncell = math.Clamp(tonumber(args[3]) or 64, 1, 64)
   local tx, ty = fetch.tile_of(lat, lon, 14)
   print(string.format("[Tiny Atlas] build bench: tile 14/%d/%d (%.4f, %.4f), %d cells", tx, ty, lat, lon, ncell))
+  print("[Tiny Atlas] getting the map tile...")
   local t_req = SysTime()
   local dl0 = F.stats.downloads
   F:get("omt", 14, tx, ty, function(bytes)
@@ -140,9 +144,6 @@ concommand.Add("ta_buildbench", function(_, _, args)
           print(string.format("[Tiny Atlas]   cell %d,%d: %s", cx, cy, table.concat(r.problems, "; ")))
         end
         if spent * 1000 > worst.ms then worst = { ms = spent * 1000, cx = cx, cy = cy, st = r.stats } end
-        if k % 16 == 0 then
-          print(string.format("[Tiny Atlas]   %d/%d cells, %.0f ms CPU so far", k, ncell, job.cpu_now() * 1000))
-        end
       end
       job.where = "writing the report"
       local wall = SysTime() - wall0
@@ -167,6 +168,6 @@ concommand.Add("ta_buildbench", function(_, _, args)
       print("[Tiny Atlas] report written to data/" .. report(lines))
     end)
   end, function(e)
-    print("[Tiny Atlas] build bench: could not get the map tile: " .. tostring(e))
+    print("[Tiny Atlas] FAILED: could not get the map tile: " .. tostring(e))
   end)
 end)

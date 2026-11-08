@@ -43,4 +43,12 @@ assert(#requests == 2, "expected the TileJSON and one tile, got " .. #requests)
 run("second run: cache, game paused (only PostRender runs)", true)
 assert(#requests == 2, "second run should not download")
 assert(#F.errors == 0, "errors: " .. table.concat(F.errors, "; "))
+-- a place whose tile is not cached, with the network down: must say FAILED by itself
+http.Fetch = function(url, ok, fail) timer.Simple(0.1, function() fail("unreachable in test") end) end
+printed = {}
+F.run("ta_buildbench", "40.0", "-3.0")
+for _ = 1, 30 do F.tick(1 / 60); F.run_simple() end
+oldprint("--- third run: network down")
+for _, l in ipairs(printed) do oldprint(l) end
+assert((printed[#printed] or ""):match("FAILED"), "a failed download must print FAILED")
 oldprint("OK: requests " .. #requests .. ", errors 0")
