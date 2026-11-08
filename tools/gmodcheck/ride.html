@@ -9,7 +9,12 @@ const W = +(Q.get('w') || 640), H = +(Q.get('h') || 360);
 const cap = await (await fetch(Q.get('cap') + '.json')).json();
 const buf = await (await fetch(Q.get('cap') + '.bin')).arrayBuffer();
 const U = cap.unit, sky = '#c4d8e8';
-const r = new THREE.WebGLRenderer({ antialias: false, preserveDrawingBuffer: true }); r.setSize(W, H); document.body.appendChild(r.domElement);
+// px > 1: the pixel-art filter, drawn small and stretched with sharp pixels like the game does
+const PX = +(Q.get('px') || 1);
+const r = new THREE.WebGLRenderer({ antialias: false, preserveDrawingBuffer: true }); r.setSize(Math.ceil(W / PX), Math.ceil(H / PX)); document.body.appendChild(r.domElement);
+const out = document.createElement('canvas'); out.width = W; out.height = H;
+const octx = out.getContext('2d'); octx.imageSmoothingEnabled = false;
+const shot = () => { if (PX <= 1) return r.domElement.toDataURL('image/jpeg', 0.9); octx.drawImage(r.domElement, 0, 0, W, H); return out.toDataURL('image/jpeg', 0.9); };
 const scene = new THREE.Scene(); scene.background = new THREE.Color(sky);
 const fog = new THREE.Fog(sky, 300 * U, 2000 * U);
 const MAT = Q.get('mat');
@@ -20,7 +25,7 @@ const mats = {};
 async function material(texname) {
   if (mats[texname]) return mats[texname];
   const t = texname && texname !== 'color/white' ? await tex(texname) : null;
-  return mats[texname] = new THREE.MeshBasicMaterial({ map: t, vertexColors: true, side: THREE.DoubleSide, color: t ? 0xffffff : 0xff00ff });
+  return mats[texname] = new THREE.MeshBasicMaterial({ map: t, vertexColors: true, side: THREE.DoubleSide, color: (t || texname === 'color/white') ? 0xffffff : 0xff00ff });
 }
 const byId = {}; for (const m of cap.meshes) byId[m.id] = m;
 const objs = {};
@@ -57,7 +62,7 @@ for (let fi = from; fi < to; fi++) {
   cam.lookAt(c.pos[0] + Math.cos(p) * Math.cos(y), c.pos[1] + Math.cos(p) * Math.sin(y), c.pos[2] - Math.sin(p));
   r.autoClear = true; r.render(far, cam);
   r.autoClear = false; r.clearDepth(); r.render(near, cam);
-  await window.save(`${String(fi).padStart(4, '0')}_a.jpg`, r.domElement.toDataURL('image/jpeg', 0.88));
+  await window.save(`${String(fi).padStart(4, '0')}_a.jpg`, shot());
   r.autoClear = true;
   // move the distant ground into the top view too (under the cells)
   for (const o of [...far.children]) { far.remove(o); o.position.z -= 30 * U; near.add(o); }
@@ -67,7 +72,7 @@ for (let fi = from; fi < to; fi++) {
   marker.position.set(rx, ry, rz + 40 * U); marker.rotation.set(0, 0, hd - Math.PI / 2); marker.scale.set(1, 1, 0.05); near.add(marker);
   top.position.set(rx, ry, rz + 1500 * U); top.up.set(0, 1, 0); top.lookAt(rx, ry, rz); top.updateProjectionMatrix();
   r.render(near, top);
-  await window.save(`${String(fi).padStart(4, '0')}_b.jpg`, r.domElement.toDataURL('image/jpeg', 0.88));
+  await window.save(`${String(fi).padStart(4, '0')}_b.jpg`, shot());
   near.remove(marker);
 }
 window.DONE = true;

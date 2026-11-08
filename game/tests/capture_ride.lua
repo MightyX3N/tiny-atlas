@@ -53,6 +53,9 @@ function render.ClearDepth() if F.capture then F.clear_at = #F.draws end end
 
 include("cl_init.lua")
 local V = TinyAtlas.View
+for _, kv in ipairs({ { "TA_STYLE", "ta_style" }, { "TA_PIXELATE", "ta_pixelate" }, { "TA_CAM_BACK", "ta_cam_back" }, { "TA_CAM_UP", "ta_cam_up" } }) do
+  if os.getenv(kv[1]) then F.set(kv[2], os.getenv(kv[1])) end
+end
 TinyAtlas.Ride = { s = 0, speed = 8 }
 
 local function step_frame()
@@ -97,7 +100,7 @@ local function mesh_id(m, mat)
   return id
 end
 local length = V.mode == "ride" and V.R.length or (STEP * (MAXF - 1))
-local s, fcount, worst_build = 0, 0, 0
+local s, fcount, worst_build = tonumber(os.getenv("TA_START") or "0"), 0, 0
 while s <= length + 0.01 and fcount < MAXF do
   TinyAtlas.Ride.s = s
   V.plan_t = 0
@@ -114,9 +117,9 @@ while s <= length + 0.01 and fcount < MAXF do
     parts[#parts + 1] = string.format("[%d,%.2f,%.2f,%.2f]", mesh_id(d.mesh, d.mat), d.t[1], d.t[2], d.t[3])
   end
   local rb = F.rider_box or { x = 0, y = 0, z = 0 }
-  frames[#frames + 1] = string.format('{"s":%.1f,"camera":{"pos":[%.2f,%.2f,%.2f],"ang":[%.4f,%.4f,%.4f],"fov":%.1f},"rider":[%.2f,%.2f,%.2f],"heading":%.2f,"grade":%.2f,"clear":%d,"draws":[%s]}',
+  frames[#frames + 1] = string.format('{"s":%.1f,"camera":{"pos":[%.2f,%.2f,%.2f],"ang":[%.4f,%.4f,%.4f],"fov":%.1f},"rider":[%.2f,%.2f,%.2f],"heading":%.2f,"grade":%.2f,"clear":%d,"px":%d,"draws":[%s]}',
     s, c.pos.x, c.pos.y, c.pos.z, c.ang.p, c.ang.y, c.ang.r, c.fov, rb.x, rb.y, rb.z,
-    math.deg(math.atan2(V.fy, V.fx)), V.mode == "ride" and V.R:grade(s) or (V.roam_grade or 0), F.clear_at or 0, table.concat(parts, ","))
+    math.deg(math.atan2(V.fy, V.fx)), V.mode == "ride" and V.R:grade(s) or (V.roam_grade or 0), F.clear_at or 0, (F.screen_quad and V.px) or 1, table.concat(parts, ","))
   fcount = fcount + 1
   if fcount % 40 == 0 then oldprint(string.format("  %d frames, %.2f km, %d meshes, %d cells built", fcount, s / 1000, nid, V.W.stats.built)) end
   s = s + STEP

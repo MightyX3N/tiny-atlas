@@ -26,7 +26,7 @@ M.TEXTURE = {
 }
 M.WALL_TEXTURE = "paving"
 -- every texture used, in drawing order (water last)
-M.TEXTURES = {}
+M.TEXTURES = { "flat" }
 do
   local seen = { water = true }
   for _, t in pairs(M.TEXTURE) do if not seen[t] then seen[t] = true; M.TEXTURES[#M.TEXTURES + 1] = t end end
@@ -188,6 +188,190 @@ function M.far(H, tx, ty, opts)
       -- counter-clockwise seen from above (y north = -j)
       v(i, j); v(i, j + 1); v(i + 1, j + 1)
       v(i, j); v(i + 1, j + 1); v(i + 1, j)
+    end
+  end
+  return { G }
+end
+
+-- ---------------------------------------------------------------------------------------------------------
+-- Flat style (low-poly, no textures): every surface a colour, lighting baked into the vertex colours.
+-- A warm sun from the south-west and a cool sky light; hollows a little darker; open land shaded by its facets,
+-- roads and water smooth. One group per cell (tex = "flat"), so a cell is one or two draws.
+
+M.PALETTE = {
+  grass = { 146, 178, 92 }, park = { 132, 172, 86 }, cemetery = { 128, 162, 92 }, ground = { 160, 176, 98 },
+  farmland = { 196, 182, 112 }, wood = { 84, 128, 72 }, wetland = { 116, 150, 104 }, pitch = { 118, 170, 84 },
+  sand = { 226, 206, 150 }, rock = { 150, 142, 132 }, ice = { 236, 240, 246 },
+  residential = { 178, 170, 152 }, commercial = { 182, 172, 160 }, industrial = { 168, 164, 158 },
+  building = { 158, 124, 108 },
+  road = { 104, 100, 106 }, road_unpaved = { 176, 156, 120 }, cycleway = { 178, 102, 88 }, path = { 206, 190, 156 },
+  path_unpaved = { 188, 160, 112 }, track = { 180, 152, 108 }, rail = { 120, 104, 96 }, pier = { 170, 136, 100 },
+  paved = { 192, 186, 176 },
+  water = { 92, 156, 186 }, sea = { 80, 142, 180 }, stream = { 100, 162, 186 },
+  wall = { 150, 140, 128 },
+}
+local SMOOTH = { road = true, road_unpaved = true, cycleway = true, path = true, path_unpaved = true, track = true,
+  rail = true, pier = true, paved = true, building = true, residential = true, commercial = true, industrial = true,
+  pitch = true }
+-- sky (cool) and sun (warm) light; flat ground in the open comes out at about the palette colour
+local SKY = { 0.52, 0.58, 0.72 }
+local SUN = { 0.58, 0.50, 0.36 }
+
+local function light(base, ndl, ao, var)
+  local out = {}
+  for i = 1, 3 do
+    local v = base[i] * (SKY[i] + SUN[i] * (ndl > 0 and ndl or 0) / LZ) * ao * var
+    out[i] = v < 0 and 0 or (v > 255 and 255 or floor(v + 0.5))
+  end
+  return out
+end
+
+-- small steady colour variation by world position (the same in every cell), so big fields are not one flat colour
+local function noise(x, y)
+  local ix, iy = floor(x / 9), floor(y / 9)
+  local h = (ix * 374761393 + iy * 668265263) % 2147483647
+  h = (h * 1274126177) % 2147483647
+  return 0.96 + (h % 1000) / 1000 * 0.08
+end
+
+function M.build_flat(r, g, opts)
+  local tick = opts.tick or function() end
+  local k, U = opts.k, opts.unit or 1
+  local ox, oy = opts.ox or 0, opts.oy or 0
+  local X, Y, V, surf, nt = r.X, r.Y, r.V, r.surf, r.nt
+  local land, water = g.land, g.water
+  local P = M.PALETTE
+
+  -- smooth vertex normals over land, and how much lower each point is than its neighbours (hollows)
+  local nx, ny, nz, nsum, ncount = {}, {}, {}, {}, {}
+  local fn = {}
+  for t = 1, nt do
+    if t % 256 == 0 then tick() end
+    if not WATER[surf[t]] then
+      local o = 3 * t - 3
+      local a, b, c = V[o + 1], V[o + 2], V[o + 3]
+      local ux, uy, uz = (X[b] - X[a]) * k, -(Y[b] - Y[a]) * k, land[b] - land[a]
+      local vx, vy, vz = (X[c] - X[a]) * k, -(Y[c] - Y[a]) * k, land[c] - land[a]
+      local fx, fy, fz = uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx
+      if fz < 0 then fx, fy, fz = -fx, -fy, -fz end
+      local l = sqrt(fx * fx + fy * fy + fz * fz)
+      if l > 0 then fn[t] = (fx * LX + fy * LY + fz * LZ) / l else fn[t] = LZ end
+      for _, v in ipairs({ a, b, c }) do
+        nx[v] = (nx[v] or 0) + fx; ny[v] = (ny[v] or 0) + fy; nz[v] = (nz[v] or 0) + fz
+      end
+      nsum[a] = (nsum[a] or 0) + land[b] + land[c]; ncount[a] = (ncount[a] or 0) + 2
+      nsum[b] = (nsum[b] or 0) + land[a] + land[c]; ncount[b] = (ncount[b] or 0) + 2
+      nsum[c] = (nsum[c] or 0) + land[a] + land[b]; ncount[c] = (ncount[c] or 0) + 2
+    end
+  end
+  local vn, ao = {}, {}
+  for v, x in pairs(nx) do
+    local y, z = ny[v], nz[v]
+    local l = sqrt(x * x + y * y + z * z)
+    vn[v] = l > 0 and (x * LX + y * LY + z * LZ) / l or LZ
+    local below = nsum[v] / ncount[v] - land[v]          -- metres lower than the points around it
+    local a = 1 - 0.06 * below
+    ao[v] = a < 0.72 and 0.72 or (a > 1.04 and 1.04 or a)
+  end
+  tick()
+
+  local groups = {}
+  local G
+  local function newgroup() G = { tex = "flat", n = 0, d = {} }; groups[#groups + 1] = G end
+  newgroup()
+  local function vert(x, y, z, c)
+    local d, i = G.d, G.n * 8
+    d[i + 1], d[i + 2], d[i + 3] = x * U, y * U, z * U
+    d[i + 4], d[i + 5] = 0, 0
+    d[i + 6], d[i + 7], d[i + 8] = c[1], c[2], c[3]
+    G.n = G.n + 1
+  end
+
+  for t = 1, nt do
+    if t % 256 == 0 then tick() end
+    if G.n + 3 > M.MAX_VERTS then newgroup() end
+    local s = surf[t]
+    local base = P[s] or P.ground
+    local o = 3 * t - 3
+    local a, b, c = V[o + 1], V[o + 3], V[o + 2]          -- counter-clockwise seen from above
+    if WATER[s] then
+      for _, v in ipairs({ a, b, c }) do
+        local x, y = X[v] * k, -Y[v] * k
+        vert(x, y, water[v], light(base, LZ, 1, noise(ox + x, oy + y) * 0.5 + 0.5))
+      end
+    else
+      local smooth = SMOOTH[s]
+      for _, v in ipairs({ a, b, c }) do
+        local x, y = X[v] * k, -Y[v] * k
+        -- open land: mostly its own facet, a little smooth, so slopes show facets without long slivers standing out
+        local ndl = smooth and vn[v] or (0.7 * fn[t] + 0.3 * vn[v])
+        vert(x, y, land[v], light(base, ndl, ao[v] or 1, noise(ox + x, oy + y)))
+      end
+    end
+  end
+
+  -- quay walls and banks
+  for i, e in ipairs(g.walls) do
+    if i % 256 == 0 then tick() end
+    local a, b = e[1], e[2]
+    local ax, ay, bx, by = X[a] * k, -Y[a] * k, X[b] * k, -Y[b] * k
+    local ta, tb = land[a], land[b]
+    local wa, wb = (water[a] or ta) - 0.5, (water[b] or tb) - 0.5
+    if ta > wa or tb > wb then
+      if G.n + 6 > M.MAX_VERTS then newgroup() end
+      local dx, dy = bx - ax, by - ay
+      local l = sqrt(dx * dx + dy * dy)
+      local ndl = 0.3
+      if l > 0 then ndl = abs((dy / l) * LX + (-dx / l) * LY) end
+      local top = light(P.wall, ndl * 0.8, 1, 1)
+      local bot = light(P.wall, ndl * 0.8, 0.7, 1)
+      vert(ax, ay, ta, top); vert(bx, by, tb, top); vert(bx, by, wb, bot)
+      vert(ax, ay, ta, top); vert(bx, by, wb, bot); vert(ax, ay, wa, bot)
+    end
+  end
+  return groups
+end
+
+-- the distant ground in the flat style: one zoom-14 tile of elevation as faceted grass-coloured land
+function M.far_flat(H, tx, ty, opts)
+  local k, U = opts.k, opts.unit or 1
+  local ox, oy = opts.ox or 0, opts.oy or 0
+  local n = opts.grid or 48
+  local step = 65536 / n
+  local gx0, gy0 = tx * 65536, ty * 65536
+  local hs = {}
+  for j = 0, n do
+    for i = 0, n do hs[j * (n + 1) + i] = H:at_soft(gx0 + i * step, gy0 + j * step) or 0 end
+    if opts.tick then opts.tick() end
+  end
+  local sm = step * k
+  local G = { tex = "flat", n = 0, d = {} }
+  local d = G.d
+  local base = M.PALETTE.ground
+  local function tri(i1, j1, i2, j2, i3, j3)
+    local p = { { i1, j1 }, { i2, j2 }, { i3, j3 } }
+    local x1, y1, z1 = i1 * sm, -j1 * sm, hs[j1 * (n + 1) + i1]
+    local x2, y2, z2 = i2 * sm, -j2 * sm, hs[j2 * (n + 1) + i2]
+    local x3, y3, z3 = i3 * sm, -j3 * sm, hs[j3 * (n + 1) + i3]
+    local ux, uy, uz = x2 - x1, y2 - y1, z2 - z1
+    local vx, vy, vz = x3 - x1, y3 - y1, z3 - z1
+    local fx, fy, fz = uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx
+    if fz < 0 then fx, fy, fz = -fx, -fy, -fz end
+    local l = sqrt(fx * fx + fy * fy + fz * fz)
+    local c = light(base, l > 0 and (fx * LX + fy * LY + fz * LZ) / l or LZ, 1, noise(ox + x1, oy + y1))
+    for _, q in ipairs(p) do
+      local x, y, z = q[1] * sm, -q[2] * sm, hs[q[2] * (n + 1) + q[1]]
+      local o = G.n * 8
+      d[o + 1], d[o + 2], d[o + 3] = x * U, y * U, z * U
+      d[o + 4], d[o + 5] = 0, 0
+      d[o + 6], d[o + 7], d[o + 8] = c[1], c[2], c[3]
+      G.n = G.n + 1
+    end
+  end
+  for j = 0, n - 1 do
+    for i = 0, n - 1 do
+      tri(i, j, i, j + 1, i + 1, j + 1)
+      tri(i, j, i + 1, j + 1, i + 1, j)
     end
   end
   return { G }

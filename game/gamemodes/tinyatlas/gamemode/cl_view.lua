@@ -18,6 +18,11 @@ V.U = U
 local VIEW = 700                          -- metres: built cells farther away are not drawn
 local LOOK = { sky_top = { 96, 150, 206 }, sky_horizon = { 196, 216, 232 }, fog_near = 300, fog_far = 2000 }
 local MAX_BOOST_MS = 40                   -- build time per frame while the loading screen is up
+-- settings (console for now; the settings menu will use the same names)
+local cv_style = CreateClientConVar("ta_style", "flat", true, false, "World look: flat (low-poly colours) or textured (the asset pack's ground textures)")
+local cv_pixel = CreateClientConVar("ta_pixelate", "1", true, false, "Pixel size of the pixel-art filter: 1 = off, 2-6 = bigger pixels")
+local cv_back = CreateClientConVar("ta_cam_back", "9", true, false, "Camera distance behind the rider (m)")
+local cv_up = CreateClientConVar("ta_cam_up", "4", true, false, "Camera height above the rider (m)")
 
 local function say(msg) print("[Tiny Atlas] " .. msg) end
 
@@ -31,6 +36,13 @@ local mats = {}
 local function ground_material(pack, tex)
   local key = pack.id .. "/" .. tex
   if mats[key] then return mats[key] end
+  if tex == "flat" then
+    -- the flat look: colours come from the vertices only
+    local m = CreateMaterial("tinyatlas_flat", "UnlitGeneric",
+      { ["$basetexture"] = "color/white", ["$vertexcolor"] = 1, ["$nocull"] = 1, ["$model"] = 0 })
+    mats[key] = m
+    return m
+  end
   local files = pack.ground[tex] or pack.ground.rural
   local m = CreateMaterial("tinyatlas_ground_" .. pack.id .. "_" .. tex, "UnlitGeneric",
     { ["$basetexture"] = "color/white", ["$vertexcolor"] = 1, ["$nocull"] = 1, ["$model"] = 0 })
@@ -40,6 +52,22 @@ local function ground_material(pack, tex)
   else say("texture missing: materials/" .. png) end
   mats[key] = m
   return m
+end
+
+-- render targets for the pixel-art filter, one per size (GMod cannot resize or free them, so they are reused)
+local targets = {}
+function V.pixel_target(w, h)
+  local key = w .. "x" .. h
+  local t = targets[key]
+  if t then return t end
+  -- point sampling (1) + clamp s/t (4, 8) + no mipmaps (256): sharp pixels when stretched
+  local rt = GetRenderTargetEx("tinyatlas_pixel_" .. key, w, h, RT_SIZE_LITERAL, MATERIAL_RT_DEPTH_SEPARATE,
+    1 + 4 + 8 + 256, 0, IMAGE_FORMAT_RGB888)
+  local mat = CreateMaterial("tinyatlas_pixel_" .. key, "UnlitGeneric",
+    { ["$basetexture"] = rt:GetName(), ["$ignorez"] = 1, ["$vertexcolor"] = 0, ["$model"] = 0 })
+  t = { rt = rt, mat = mat }
+  targets[key] = t
+  return t
 end
 
 -- ---- meshes: mesh.lua groups -> IMeshes, one per group ----
@@ -104,7 +132,7 @@ local function start(opts)
   V.pack = pack
   local W = world.new({
     fetch = TinyAtlasFetch, lat = opts.lat, lon = opts.lon, tile_metres = pack.tile_metres or 3.3, unit = U,
-    make = make_meshes, free = free_meshes, log = say,
+    make = make_meshes, free = free_meshes, log = say, style = cv_style:GetString() == "textured" and "textured" or "flat",
   })
   V.W, V.R, V.mode, V.on = W, opts.R, opts.mode, true
   V.s, V.phase, V.progress, V.t = 0, "loading", nil, 0
@@ -187,7 +215,7 @@ local function rider()
 end
 
 local function camera(x, y, z, fx, fy, back)
-  local d, h = 7, 2.8
+  local d, h = math.Clamp(cv_back:GetFloat(), 2, 40), math.Clamp(cv_up:GetFloat(), 0.5, 30)
   local cx, cy, gz
   if V.mode == "ride" then
     local cs = back and V.s + 5 or V.s - d
@@ -294,14 +322,23 @@ local function frame(fov)
   end
   local L = LOOK
   local hz, top = L.sky_horizon, L.sky_top
+  -- the pixel-art filter: draw the world into a small render target, then stretch it over the screen with sharp pixels
+  local px = math.floor(math.Clamp(cv_pixel:GetFloat(), 1, 6))
+  local rw, rh = ScrW(), ScrH()
+  local pix
+  if px >= 2 then
+    rw, rh = math.ceil(ScrW() / px), math.ceil(ScrH() / px)
+    pix = V.pixel_target(rw, rh)
+    render.PushRenderTarget(pix.rt, 0, 0, rw, rh)
+  end
   render.Clear(hz[1], hz[2], hz[3], 255, true, true)
   cam.Start2D()
   surface.SetDrawColor(top[1], top[2], top[3], 255)
   surface.SetMaterial(GRAD)
-  surface.DrawTexturedRect(0, 0, ScrW(), ScrH() * 0.55)
+  surface.DrawTexturedRect(0, 0, rw, rh * 0.55)
   cam.End2D()
   render.ClearDepth()
-  cam.Start3D(Vector((cx - O[1]) * U, (cy - O[2]) * U, (cz - O[3]) * U), ang, fov, 0, 0, ScrW(), ScrH(), 4, (L.fog_far + 400) * U)
+  cam.Start3D(Vector((cx - O[1]) * U, (cy - O[2]) * U, (cz - O[3]) * U), ang, fov, 0, 0, rw, rh, 4, (L.fog_far + 400) * U)
   render.FogMode(MATERIAL_FOG_LINEAR)
   render.FogStart(L.fog_near * U)
   render.FogEnd(L.fog_far * U)
@@ -319,14 +356,15 @@ local function frame(fov)
   end
   local draws, tris = 0, 0
   -- the distant ground first (elevation only); the built cells are then drawn over it
-  local fm
   for _, f in pairs(W.far) do
     if f.handle then
-      if not fm then fm = ground_material(V.pack, mesh_lib.FAR_TEXTURE); render.SetMaterial(fm) end
       TV:SetUnpacked((f.ox - O[1]) * U, (f.oy - O[2]) * U, -O[3] * U)
       MT:SetTranslation(TV)
       cam.PushModelMatrix(MT)
-      for _, L2 in pairs(f.handle.tex) do for _, m in ipairs(L2) do m:Draw(); draws = draws + 1 end end
+      for tex, L2 in pairs(f.handle.tex) do
+        render.SetMaterial(ground_material(V.pack, tex))
+        for _, m in ipairs(L2) do m:Draw(); draws = draws + 1 end
+      end
       cam.PopModelMatrix()
     end
   end
@@ -354,6 +392,12 @@ local function frame(fov)
   end
   cam.End3D()
   render.FogMode(MATERIAL_FOG_NONE)
+  if pix then
+    render.PopRenderTarget()
+    render.SetMaterial(pix.mat)
+    render.DrawScreenQuad()
+  end
+  V.px = px
   V.draws, V.tris = draws, tris
 end
 

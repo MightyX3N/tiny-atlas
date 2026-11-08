@@ -130,6 +130,25 @@ return function(F, opts)
   function render.FogMaxDensity() end
   function render.FogColor() end
   function render.DrawBox(pos) F.rider_box = pos end
+  -- render targets (the pixel-art filter)
+  RT_SIZE_LITERAL, MATERIAL_RT_DEPTH_SEPARATE, IMAGE_FORMAT_RGB888 = 5, 1, 2
+  local rt_stack = {}
+  function GetRenderTargetEx(name, w, h)
+    return { name = name, w = w, h = h, GetName = function(self) return self.name end }
+  end
+  function render.PushRenderTarget(rt, x, y, w, h)
+    if not rt then err("PushRenderTarget without a target") end
+    rt_stack[#rt_stack + 1] = rt
+    F.render_target = rt
+  end
+  function render.PopRenderTarget()
+    if #rt_stack == 0 then err("PopRenderTarget with nothing pushed") end
+    rt_stack[#rt_stack] = nil
+  end
+  function render.DrawScreenQuad()
+    if #rt_stack ~= 0 then err("DrawScreenQuad while a render target is still pushed") end
+    F.screen_quad = true
+  end
   cam = {}
   function cam.Start3D(pos, ang, fov, x, y, w, h, zn, zf)
     if in3d then err("cam.Start3D twice") end
@@ -235,6 +254,7 @@ return function(F, opts)
   function F.render_frame(dt)
     F.dt = dt; F.t = F.t + dt
     F.texts, F.frame_draws = {}, 0
+    F.render_target, F.screen_quad = nil, nil
     if F.capture then F.draws = {} end
     return hook.Run("RenderScene", Vector(0, 0, 0), Angle(0, 0, 0), 75)
   end

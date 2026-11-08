@@ -8,6 +8,7 @@
 --   opts.make(groups, cell) -> handle    turn mesh.lua groups into the game's meshes
 --   opts.free(handle)                   release them
 --   opts.log(msg)                       status lines
+--   opts.style        "flat" (low-poly colours, the default look) or "textured" (the pack's ground textures)
 --
 --   W:work(tick)        one piece of work (call from a build job coroutine; tick yields when time is up).
 --                       Returns false when there is nothing to do.
@@ -233,7 +234,7 @@ local function build_far(self, tx, ty, tick)
   if self.far[key] ~= f then return end
   if h.state ~= "ready" then f.state = "failed"; return end
   f.ox, f.oy = self:metres_of(tx * TILE, ty * TILE)
-  local groups = mesh.far(self.H, tx, ty, { k = self.k, ox = f.ox, oy = f.oy, tile_metres = self.o.tile_metres,
+  local groups = (self.o.style == "flat" and mesh.far_flat or mesh.far)(self.H, tx, ty, { k = self.k, ox = f.ox, oy = f.oy, tile_metres = self.o.tile_metres,
     unit = self.o.unit, tick = tick })
   f.handle = self.o.make(groups, f)
   f.state = "ready"
@@ -271,7 +272,7 @@ function M:work(tick, clock)
     return true
   end
   c.ox, c.oy = self:metres_of(cx * CELL, cy * CELL)
-  local groups = mesh.build(r, g, { k = self.k, ox = c.ox, oy = c.oy, tile_metres = self.o.tile_metres,
+  local groups = (self.o.style == "flat" and mesh.build_flat or mesh.build)(r, g, { k = self.k, ox = c.ox, oy = c.oy, tile_metres = self.o.tile_metres,
     unit = self.o.unit, tick = tick })
   c.r, c.g = r, g
   c.problems = #r.problems + #g.problems
