@@ -11,7 +11,8 @@ for i = 2, #arg do
   local L = mvt.decode(readfile(CACHE .. "/omt/14/" .. tx .. "_" .. ty .. ".dat"))
   local H = height.new()
   for dx = -1, 1 do for dy = -1, 1 do
-    local p = CACHE .. "/terrarium/14/" .. (tx + dx) .. "_" .. (ty + dy) .. ".dat"
+    local p = CACHE .. "/mapterhorn/14/" .. (tx + dx) .. "_" .. (ty + dy) .. ".dat"
+    if os.getenv("NO_MAPTERHORN") or not exists(p) then p = CACHE .. "/terrarium/14/" .. (tx + dx) .. "_" .. (ty + dy) .. ".dat" end
     if exists(p) then H:add(tx + dx, ty + dy, readfile(p)) end
   end end
   local lat = math.deg(math.atan(math.sinh(math.pi * (1 - 2 * (ty + 0.5) / 16384))))
@@ -43,7 +44,7 @@ for i = 2, #arg do
         local parts = {}
         for k = 1, 3 do
           local v = V[o + k]
-          parts[#parts + 1] = string.format("%d %d %.2f", X[v], Y[v], wet and g.water[v] or g.land[v])
+          parts[#parts + 1] = string.format("%d %d %.4f", X[v], Y[v], wet and g.water[v] or g.land[v])
         end
         f:write(table.concat(parts, " "), " ", r.surf[t], "\n")
       end

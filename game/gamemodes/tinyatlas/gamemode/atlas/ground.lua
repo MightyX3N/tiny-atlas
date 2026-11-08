@@ -14,11 +14,13 @@ local M = {}
 
 local ROADLIKE, WATER = cell.ROADLIKE, cell.WATER
 local NXT = { 2, 3, 1 }
+local MAX_GRADE = { road = 0.18, cycleway = 0.18, road_unpaved = 0.25, rail = 0.06, track = 0.3, path = 0.4,
+  path_unpaved = 0.4 }
 
 -- road centre lines with smoothed heights, and a bucket grid over their segments
 local function centrelines(r, H, gx0, gy0, mpu)
   local step = 6 / mpu                              -- sample every 6 m along each line
-  local win = 18 / mpu                              -- smooth over +-18 m
+  local win = 25 / mpu                              -- smooth over +-25 m
   local lines = {}
   for _, sh in ipairs(r.shapes) do
     if sh.lines and ROADLIKE[sh.surf] then
@@ -80,13 +82,16 @@ local function centrelines(r, H, gx0, gy0, mpu)
   return lines, grid, B
 end
 
--- height of the nearest road centre line within its half width (+ slack), or nil
+-- road height at a point: the heights of every road centre line within its half width (+ slack), blended by
+-- distance, so roads that meet at a junction share their heights there; nil if no road is near
 local function road_height(lines, grid, B, x, y, slack)
   local G = grid[floor(y / B) * 4096 + floor(x / B)]
   if not G then return nil end
-  local best, bh
+  local sw, sh = 0, 0
+  local seen = {}
   for i = 1, #G, 2 do
-    local L, k = lines[G[i]], G[i + 1]
+    local li, k = G[i], G[i + 1]
+    local L = lines[li]
     local ax, ay, bx, by = L.xs[k], L.ys[k], L.xs[k + 1], L.ys[k + 1]
     local dx, dy = bx - ax, by - ay
     local l2 = dx * dx + dy * dy
@@ -94,12 +99,23 @@ local function road_height(lines, grid, B, x, y, slack)
     if t < 0 then t = 0 elseif t > 1 then t = 1 end
     local px, py = ax + dx * t, ay + dy * t
     local d = sqrt((x - px) ^ 2 + (y - py) ^ 2)
-    if d <= L.half + slack and (not best or d < best) then
+    if d <= L.half + slack then
       local h0, h1 = L.hs[k], L.hs[k + 1]
-      if h0 and h1 then best = d; bh = h0 + (h1 - h0) * t end
+      if h0 and h1 then
+        -- one contribution per line: its nearest segment
+        local prev = seen[li]
+        if not prev or d < prev[1] then
+          seen[li] = { d, h0 + (h1 - h0) * t }
+        end
+      end
     end
   end
-  return bh
+  for _, e in pairs(seen) do
+    local w = 1 / (e[1] + 1)
+    sw = sw + w; sh = sh + w * e[2]
+  end
+  if sw == 0 then return nil end
+  return sh / sw
 end
 
 function M.heights(r, H, gx0, gy0, opts)
@@ -126,7 +142,7 @@ function M.heights(r, H, gx0, gy0, opts)
   tick()
   local land, water = {}, {}
   local missing = 0
-  local r_water = 20 / mpu
+  local r_water = 50 / mpu
   local n = 0
   for v in pairs(used) do
     n = n + 1
@@ -149,6 +165,42 @@ function M.heights(r, H, gx0, gy0, opts)
   end
   if missing > 0 then problems[#problems + 1] = missing .. " points without elevation data" end
 
+  -- smooth road heights along the road surface: removes steps where roads with slightly different heights meet
+  -- and where a point at a road's edge fell back to the terrain
+  local nbr = {}
+  local S = r.S
+  -- points on the cell's border are never moved: the neighbouring cell computes the same height for them
+  local function border(v) local x, y = X[v], Y[v]; return x == 0 or y == 0 or x == S or y == S end
+  for t = 1, nt do
+    if ROADLIKE[surf[t]] then
+      local o = 3 * t - 3
+      for i = 1, 3 do
+        local a, b = V[o + i], V[o + NXT[i]]
+        if roady[a] and roady[b] and not wet[a] and not wet[b] and not border(a) and not border(b) then
+          local L = nbr[a]; if not L then L = {}; nbr[a] = L end
+          L[#L + 1] = b
+          local Lb = nbr[b]; if not Lb then Lb = {}; nbr[b] = Lb end
+          Lb[#Lb + 1] = a
+        end
+      end
+    end
+  end
+  for _ = 1, 8 do
+    tick()
+    local nh = {}
+    for v, L in pairs(nbr) do
+      local sw, sh = 0, 0
+      for k = 1, #L do
+        local u = L[k]
+        local d = sqrt((X[u] - X[v]) ^ 2 + (Y[u] - Y[v]) ^ 2) * mpu
+        local w = 1 / (d + 0.5)
+        sw = sw + w; sh = sh + w * land[u]
+      end
+      nh[v] = 0.5 * land[v] + 0.5 * sh / sw
+    end
+    for v, h in pairs(nh) do land[v] = h end
+  end
+
   -- quay walls / banks: edges where a water triangle meets a land triangle (the cell border is not a wall)
   local walls = {}
   for t = 1, nt do
@@ -169,10 +221,12 @@ function M.heights(r, H, gx0, gy0, opts)
     if WATER[surf[t]] and not seen[t] then
       regions = regions + 1
       local lo, hi, stack, sn = 1e9, -1e9, { t }, 1
+      local flowing = false
       seen[t] = true
       while sn > 0 do
         local u = stack[sn]; sn = sn - 1
         local o = 3 * u - 3
+        if surf[u] == "stream" then flowing = true end
         for i = 1, 3 do
           local h = water[V[o + i]]
           if h < lo then lo = h end
@@ -181,14 +235,18 @@ function M.heights(r, H, gx0, gy0, opts)
           if w and WATER[surf[w]] and not seen[w] then seen[w] = true; sn = sn + 1; stack[sn] = w end
         end
       end
-      if hi - lo > worst_water then worst_water = hi - lo end
+      -- streams run downhill; lakes, canals and the sea should be level within the cell
+      if not flowing and hi - lo > worst_water then worst_water = hi - lo end
     end
   end
   stats.water_areas, stats.water_range = regions, worst_water
+  if worst_water > 1.5 then problems[#problems + 1] = string.format("standing water not level (%.1f m)", worst_water) end
 
-  local steep, worst_slope = 0, 0
+  -- roads a car or bike uses must stay under 30 %; paths and tracks may be steep (hiking trails)
+  local LIMIT = { road = 0.30, road_unpaved = 0.30, cycleway = 0.30, rail = 0.10 }
+  local steep, worst_slope, steep_area, road_area = 0, 0, 0, 0
   for t = 1, nt do
-    if ROADLIKE[surf[t]] then
+    if LIMIT[surf[t]] then
       local o = 3 * t - 3
       local a, b, c = V[o + 1], V[o + 2], V[o + 3]
       local ux, uy, uz = (X[b] - X[a]) * mpu, (Y[b] - Y[a]) * mpu, land[b] - land[a]
@@ -196,12 +254,20 @@ function M.heights(r, H, gx0, gy0, opts)
       local nx, ny, nz = uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx
       local horiz = sqrt(nx * nx + ny * ny)
       local slope = abs(nz) > 1e-9 and horiz / abs(nz) or 0
-      if slope > worst_slope then worst_slope = slope end
-      if slope > 0.35 then steep = steep + 1 end
+      -- |n_z| is twice the triangle's area in square metres; small slivers say nothing about the ride
+      road_area = road_area + abs(nz) / 2
+      if abs(nz) > 4.0 then
+        if slope > worst_slope then worst_slope = slope end
+        if slope > LIMIT[surf[t]] then steep = steep + 1; steep_area = steep_area + abs(nz) / 2 end
+      end
     end
   end
   stats.road_worst_slope, stats.road_steep_triangles = worst_slope, steep
-  if steep > 0 then problems[#problems + 1] = steep .. " road triangles steeper than 35 %" end
+  -- hairpin inner edges are really that steep; flag the cell only when much of its road is
+  stats.road_steep_share = road_area > 0 and steep_area / road_area or 0
+  if stats.road_steep_share > 0.05 then
+    problems[#problems + 1] = string.format("%.0f %% of the road area steeper than allowed", stats.road_steep_share * 100)
+  end
   stats.walls = #walls
   return { land = land, water = water, walls = walls, problems = problems, stats = stats }
 end

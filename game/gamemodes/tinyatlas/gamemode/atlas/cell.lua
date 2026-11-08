@@ -23,12 +23,12 @@ M.S = S
 -- surfaces a rider can be on (roads are flattened across their width)
 M.ROADLIKE = { road = true, road_unpaved = true, cycleway = true, path = true, path_unpaved = true, track = true,
   rail = true }
-M.WATER = { water = true, sea = true }
+M.WATER = { water = true, sea = true, stream = true }
 
 -- surfaces and their priority (higher wins where shapes overlap)
 M.PRIORITY = {
   building = 90, road = 80, road_unpaved = 79, cycleway = 78, path = 77, path_unpaved = 77, rail = 76, track = 75,
-  pier = 74, water = 70, sea = 70, paved = 60,
+  pier = 74, water = 70, sea = 70, stream = 70, paved = 60,
   sand = 45, wetland = 44, wood = 40, park = 32, grass = 30, pitch = 34, cemetery = 26, farmland = 20,
   rock = 18, ice = 18, residential = 10, commercial = 12, industrial = 12, ground = 0,
 }
@@ -210,7 +210,7 @@ local function classify(layer, p, ftype)
   elseif layer == "waterway" then
     if p.brunnel == "tunnel" then return nil end
     local w = WATERWAY_W[p.class]
-    if w then return "water", "line", w end
+    if w then return "stream", "line", w end
   end
   return nil
 end
@@ -483,15 +483,29 @@ function M.build(layers, cx, cy, lat, opts)
   -- segments from every ring, clipped and snapped; the cell border is a segment too
   local T = cdt.new(S)
   local SA, SB, keys = {}, {}, {}
-  local function seg(x1, y1, x2, y2)
-    local a, b, c, d = clip(x1, y1, x2, y2)
-    if not a then return end
+  -- long edges are split so the ground can follow the terrain along them
+  local max_edge = (opts.max_edge_m or 6) / mpu
+  local function seg1(a, b, c, d)
     local p, q = cdt.point(T, snap(a), snap(b)), cdt.point(T, snap(c), snap(d))
     if p == q then return end
     local k = p < q and (p * 1048576 + q) or (q * 1048576 + p)
     if keys[k] then return end
     keys[k] = true
     SA[#SA + 1] = p; SB[#SB + 1] = q
+  end
+  local function seg(x1, y1, x2, y2)
+    local a, b, c, d = clip(x1, y1, x2, y2)
+    if not a then return end
+    local len = sqrt((c - a) ^ 2 + (d - b) ^ 2)
+    local parts = floor(len / max_edge) + 1
+    if parts == 1 then return seg1(a, b, c, d) end
+    local pa, pb = a, b
+    for i = 1, parts do
+      local t = i / parts
+      local na, nb = a + (c - a) * t, b + (d - b) * t
+      seg1(pa, pb, na, nb)
+      pa, pb = na, nb
+    end
   end
   for _, sh in ipairs(shapes) do
     for _, r in ipairs(sh.rings) do
@@ -503,6 +517,20 @@ function M.build(layers, cx, cy, lat, opts)
   stats.segments = #SA
   local t2 = clock(); stats.ms_split = (t2 - t1) * 1000
 
+  -- a grid of free points so open ground follows the terrain too (not part of any edge), and the same spacing
+  -- along the cell's border. The count is fixed (not metres), so neighbouring cells always share their border
+  -- points exactly, whatever their latitude.
+  local n = opts.grid_n or 40
+  if n > 0 then
+    local step = S / n
+    for gy = 1, n - 1 do
+      for gx = 1, n - 1 do cdt.point(T, floor(gx * step + 0.5), floor(gy * step + 0.5)) end
+    end
+    for k = 1, n - 1 do
+      local v = floor(k * step + 0.5)
+      cdt.point(T, v, 0); cdt.point(T, v, S); cdt.point(T, 0, v); cdt.point(T, S, v)
+    end
+  end
   T.tick = tick
   cdt.insert_points(T)
   local t3 = clock(); stats.ms_points = (t3 - t2) * 1000
