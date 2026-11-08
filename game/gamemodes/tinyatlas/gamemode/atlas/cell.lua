@@ -220,7 +220,7 @@ local LAYERS = { "water", "waterway", "landcover", "landuse", "park", "aeroway",
 local function collect(layers, cx, cy, mpu, tick)
   local ox, oy = cx * 512, cy * 512              -- cell origin in tile units
   local m0, m1 = -64, S + 64                    -- keep shapes that come near the cell
-  local shapes = {}
+  local shapes, brunnels = {}, {}
   for _, lname in ipairs(LAYERS) do
     local L = layers[lname]
     if L then
@@ -228,6 +228,21 @@ local function collect(layers, cx, cy, mpu, tick)
       for _, f in ipairs(L.features) do
         tick()
         local surf, how, wm = classify(lname, f.props, f.type)
+        -- bridges and tunnels of roads, paths and rail: not ground, but a route on one must not take the height of
+        -- the ground under (or over) it; kept as centre lines for that
+        if lname == "transportation" and f.type == 2 and (f.props.brunnel == "bridge" or f.props.brunnel == "tunnel")
+          and f.props.class ~= "rail" and f.props.class ~= "transit" then
+          local w = ROAD_W[f.props.class] or 3
+          for _, part in ipairs(f.parts) do
+            local xs, ys, n, near = {}, {}, 0, false
+            for k = 1, #part, 2 do
+              local x, y = (part[k] - ox) * SCALE, (part[k + 1] - oy) * SCALE
+              n = n + 1; xs[n] = x; ys[n] = y
+              if x > m0 and x < m1 and y > m0 and y < m1 then near = true end
+            end
+            if near and n >= 2 then brunnels[#brunnels + 1] = { xs = xs, ys = ys, n = n, half = w / mpu / 2, kind = f.props.brunnel } end
+          end
+        end
         if surf and (f.type == 3 or how == "line") then
           -- quick reject on the feature's bounding box (computed once per tile, kept on the feature)
           local bb = f.bbox
@@ -249,7 +264,9 @@ local function collect(layers, cx, cy, mpu, tick)
           local pad = how == "line" and (wm / mpu) or 0
           if x1 + pad >= m0 and x0 - pad <= m1 and y1 + pad >= m0 and y0 - pad <= m1 then
             local sh
-            if how == "poly" then sh = polygon_shape(f, surf, ox, oy)
+            if how == "poly" then
+              sh = polygon_shape(f, surf, ox, oy)
+              if M.WATER[surf] then sh.feature = f end      -- ground.lua finds the water level per feature
             elseif f.type == 2 then sh = line_shape(f, surf, ox, oy, wm / mpu) end
             if sh and #sh.rings > 0 then shapes[#shapes + 1] = sh end
           end
@@ -257,7 +274,7 @@ local function collect(layers, cx, cy, mpu, tick)
       end
     end
   end
-  return shapes
+  return shapes, brunnels
 end
 
 ---------------------------------------------------------------------------------------------------------------
@@ -475,7 +492,7 @@ function M.build(layers, cx, cy, lat, opts)
   local mpu = M.metres_per_unit(lat)
 
   local tick = opts.tick or function() end
-  local shapes = collect(layers, cx, cy, mpu, tick)
+  local shapes, brunnels = collect(layers, cx, cy, mpu, tick)
   table.sort(shapes, function(a, b) return a.prio > b.prio end)
   stats.shapes = #shapes
   local t1 = clock(); stats.ms_collect = (t1 - t0) * 1000
@@ -623,8 +640,22 @@ function M.build(layers, cx, cy, lat, opts)
   for t = 1, T.nt do
     if not surf[t] then problems[#problems + 1] = "triangle without a surface"; break end
   end
+  -- the water polygons (shapes) covering a point of the cell, for water levels per lake / canal
+  local function water_shapes_at(x, y)
+    local gx, gy = min(S / GB - 1, max(0, floor(x / GB))), min(S / GB - 1, max(0, floor(y / GB)))
+    local L = grid[gy * 64 + gx]
+    local out = {}
+    if L then
+      for _, si in ipairs(L) do
+        local sh = shapes[si]
+        if sh.feature and in_shape(sh, x, y) then out[#out + 1] = sh end
+      end
+    end
+    return out
+  end
   return { S = S, X = X, Y = Y, V = V, C = C, N = T.N, nt = T.nt, np = T.np, surf = surf, stats = stats,
-    problems = problems, mpu = mpu, shapes = shapes, cx = cx, cy = cy }
+    problems = problems, mpu = mpu, shapes = shapes, cx = cx, cy = cy, water_shapes_at = water_shapes_at, water_layer = layers.water, brunnels = brunnels,
+    tile_origin = { cx * 512, cy * 512 } }
 end
 
 M._split_all = split_all          -- for tests

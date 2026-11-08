@@ -1,0 +1,74 @@
+<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:#000}canvas{display:block}</style></head><body>
+<script type="importmap">{"imports":{"three":"./node_modules/three/build/three.module.js"}}</script>
+<script type="module">
+// Draws the frames a fake-GMod ride capture recorded (game/tests/capture_ride.lua): the rider's view exactly as the
+// renderer drew it, and a view from above. ride.js saves every picture.
+import * as THREE from 'three';
+const Q = new URLSearchParams(location.search);
+const W = +(Q.get('w') || 640), H = +(Q.get('h') || 360);
+const cap = await (await fetch(Q.get('cap') + '.json')).json();
+const buf = await (await fetch(Q.get('cap') + '.bin')).arrayBuffer();
+const U = cap.unit, sky = '#c4d8e8';
+const r = new THREE.WebGLRenderer({ antialias: false, preserveDrawingBuffer: true }); r.setSize(W, H); document.body.appendChild(r.domElement);
+const scene = new THREE.Scene(); scene.background = new THREE.Color(sky);
+const fog = new THREE.Fog(sky, 300 * U, 2000 * U);
+const MAT = Q.get('mat');
+const tl = new THREE.TextureLoader();
+const texCache = {};
+const tex = p => texCache[p] || (texCache[p] = new Promise(res => tl.load(MAT + '/' + p, t => { t.magFilter = t.minFilter = THREE.NearestFilter; t.flipY = false; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; res(t); }, undefined, () => res(null))));
+const mats = {};
+async function material(texname) {
+  if (mats[texname]) return mats[texname];
+  const t = texname && texname !== 'color/white' ? await tex(texname) : null;
+  return mats[texname] = new THREE.MeshBasicMaterial({ map: t, vertexColors: true, side: THREE.DoubleSide, color: t ? 0xffffff : 0xff00ff });
+}
+const byId = {}; for (const m of cap.meshes) byId[m.id] = m;
+const objs = {};
+async function obj(id) {
+  if (objs[id]) return objs[id];
+  const m = byId[id], n = m.verts, a = new Float32Array(buf, m.off, n * 8);
+  const pos = new Float32Array(n * 3), uv = new Float32Array(n * 2), col = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) { pos[i*3] = a[i*8]; pos[i*3+1] = a[i*8+1]; pos[i*3+2] = a[i*8+2]; uv[i*2] = a[i*8+3]; uv[i*2+1] = a[i*8+4];
+    for (let c = 0; c < 3; c++) col[i*3+c] = Math.pow(a[i*8+5+c] / 255, 2.2); }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.BufferAttribute(uv, 2)); g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  return objs[id] = new THREE.Mesh(g, await material(m.tex));
+}
+const riderBox = new THREE.Mesh(new THREE.BoxGeometry(1.8 * U, 0.5 * U, 1.7 * U), new THREE.MeshBasicMaterial({ color: 0xc8392f }));
+const marker = new THREE.Mesh(new THREE.ConeGeometry(4 * U, 10 * U, 4), new THREE.MeshBasicMaterial({ color: 0xff2020 }));
+const vfov = 2 * Math.atan(Math.tan(75 * Math.PI / 360) * 0.75) * 180 / Math.PI;
+const cam = new THREE.PerspectiveCamera(vfov, W / H, 4, 2400 * U);
+const top = new THREE.OrthographicCamera(-160 * U * W / H, 160 * U * W / H, 160 * U, -160 * U, 1, 3000 * U);
+const from = +(Q.get('from') || 0), to = Math.min(cap.frames.length, +(Q.get('to') || 1e9));
+for (let fi = from; fi < to; fi++) {
+  const f = cap.frames[fi];
+  // two passes like the game: distant ground, depth cleared, then the built cells and the rider
+  const far = new THREE.Scene(), near = scene;
+  far.background = new THREE.Color(sky);
+  while (near.children.length) near.remove(near.children[0]);
+  const clear = f.clear || 0;
+  for (let i = 0; i < f.draws.length; i++) { const d = f.draws[i]; const o = await obj(d[0]); o.position.set(d[1], d[2], d[3]); (i < clear ? far : near).add(o); }
+  const [rx, ry, rz] = f.rider, hd = f.heading * Math.PI / 180;
+  riderBox.position.set(rx, ry, rz + 0.85 * U); riderBox.rotation.set(0, 0, hd); near.add(riderBox);
+  near.background = null;
+  far.fog = fog; near.fog = fog;
+  const c = f.camera, p = c.ang[0] * Math.PI / 180, y = c.ang[1] * Math.PI / 180;
+  cam.up.set(0, 0, 1); cam.position.set(...c.pos);
+  cam.lookAt(c.pos[0] + Math.cos(p) * Math.cos(y), c.pos[1] + Math.cos(p) * Math.sin(y), c.pos[2] - Math.sin(p));
+  r.autoClear = true; r.render(far, cam);
+  r.autoClear = false; r.clearDepth(); r.render(near, cam);
+  await window.save(`${String(fi).padStart(4, '0')}_a.jpg`, r.domElement.toDataURL('image/jpeg', 0.88));
+  r.autoClear = true;
+  // move the distant ground into the top view too (under the cells)
+  for (const o of [...far.children]) { far.remove(o); o.position.z -= 30 * U; near.add(o); }
+  near.background = new THREE.Color(sky);
+  // from above, north up, 320 m tall, rider in the middle (red arrow)
+  near.fog = null;
+  marker.position.set(rx, ry, rz + 40 * U); marker.rotation.set(0, 0, hd - Math.PI / 2); marker.scale.set(1, 1, 0.05); near.add(marker);
+  top.position.set(rx, ry, rz + 1500 * U); top.up.set(0, 1, 0); top.lookAt(rx, ry, rz); top.updateProjectionMatrix();
+  r.render(near, top);
+  await window.save(`${String(fi).padStart(4, '0')}_b.jpg`, r.domElement.toDataURL('image/jpeg', 0.88));
+  near.remove(marker);
+}
+window.DONE = true;
+</script></body></html>

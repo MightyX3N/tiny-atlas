@@ -55,6 +55,48 @@ The gate for milestone 1: every cell under 1000 ms CPU, keeps up with 40 km/h, n
 **Measured in the real game (2026-11-08), central Amsterdam, full tile:** 61 ms CPU per cell on average, 84 ms
 worst, no problems in 64 cells, 163k triangles; at 4 ms per frame it keeps up with about 470 km/h. **PASS.**
 
+## Milestone 2: ground (built, being checked)
+
+| Module | What it does |
+|---|---|
+| `webp.lua` | Lossless WebP decoder (Mapterhorn elevation tiles); checked against PIL on 27 images |
+| `height.lua` | Elevation tiles (Mapterhorn WebP, AWS Terrarium PNG as fallback), bilinear heights in global units |
+| `ground.lua` | Heights for a built cell: terrain, roads, water levels, quay walls; checks |
+| `mesh.lua` | Triangle lists per pack texture (repeating every `tile_metres`), quay walls, distant ground |
+| `route.lua` | GPX reader; a route resampled every 2 m with heights and grades from the built ground |
+| `world.lua` | Streaming: which cells to build around the rider and along the route, downloads, decoding, dropping |
+
+**Heights.** Terrain from Mapterhorn (high resolution in Denmark, the Netherlands, France and more; 30 m elsewhere),
+AWS Terrarium where Mapterhorn has nothing. Every road gets the height of its centre line, sampled every 6 m, with
+dips shorter than 40 m filled (the data is bare earth: under an unmapped bridge it shows the gap below) and then
+smoothed with a straight-line fit over +-25 m. A point on a road takes the nearest centre line; lines that meet it
+(they cross, or one ends on the other) are blended in, lines that are only close (the other leg of a hairpin) are
+not. Road points are then smoothed a little more, at most 25 cm, and never on the cell border, so cells join up.
+
+**Water.** Lakes, ponds and canals get one level per OpenStreetMap water area (a low percentile of the elevation
+inside it), shared by all pieces of a water body that touch; areas whose elevation spreads more than 2.5 m run
+downhill and get local levels, like streams. The sea is at 0 m. Banks stay 30 cm above the water, and quay walls go
+from the bank down to under the water.
+
+**Routes.** The cells a route passes are built once before the ride to give every route point the height of the
+drawn ground. On a bridge or in a tunnel (not built until milestone 3) the route goes straight across.
+
+**Checks after every cell:** standing water level within 1.5 m in each water area, and no more than 5 % (and 60 m2)
+of the road area steeper than 30 %.
+
+**In Garry's Mod** (`cl_view.lua`): `ta_ride <route>` (test routes in `gamemodes/tinyatlas/routes/`, or your own
+GPX in `garrysmod/data/tinyatlas/gpx/`), `ta_roam [lat lon]`, `ta_stop`. It prepares the route and builds the world
+around you with a progress bar, then streams cells as you ride; beyond 700 m a coarse distant ground (elevation only)
+is drawn. Status and FAILED lines go to the console by themselves.
+
+**Test routes** (`tools/routes/make_routes.lua` routes them along OSM roads from the cached tiles): Amsterdam city
+run (10 km), Amsterdam canal ring (11.3 km), Copenhagen lakes and harbour (14.2 km), Alpe d'Huez to the village
+(12.2 km, 909 m up), Rold Skov countryside loop (20.3 km); free roam in central Copenhagen.
+
+**Picture checks:** `game/tests/capture_ride.lua` rides a route in the fake GMod with the real gamemode files and
+records every mesh the renderer draws every 25 m; `tools/gmodcheck/ride.js` draws each frame (rider view and view from
+above) and `ride_sheets.py` makes contact sheets and flags holes and missing textures.
+
 ## Tests
 
 ```
@@ -67,4 +109,11 @@ RASTER_PX=128 RASTER_DIR=out python3 ../../../tools/luajit.py test_cells.lua til
 python3 ../../../tools/atlascheck/sheets.py out sheets               # contact sheets of every tile
 cd ..
 python3 ../../tools/luajit.py test_atlas_bench.lua <data dir> <tile file> <tilejson file> [lat lon]
+cd atlas
+python3 ../../../tools/luajit.py test_ground.lua <cache dir> "x y" ...              # heights + checks per cell
+python3 ../../../tools/luajit.py test_routes.lua <cache dir> ../../gamemodes/tinyatlas/routes
+cd ..
+python3 ../../tools/luajit.py capture_ride.lua <cache dir> <out> <route | roam:lat,lon>
+(cd / && python3 -m http.server 8125 --bind 127.0.0.1 &)
+node ../../tools/gmodcheck/ride.js <out> <pics dir> && python3 ../../tools/gmodcheck/ride_sheets.py <out> <pics dir> <sheets dir>
 ```

@@ -28,14 +28,17 @@ local function key(x, y) return x * 65536 + y end
 function M:has(x, y) return self.tiles[key(x, y)] ~= nil end
 
 -- keep one tile; bytes are a WebP (Mapterhorn) or PNG (AWS Terrarium) file. Returns the source name.
-function M:add(x, y, bytes)
+function M:add(x, y, bytes, tick)
   local h = {}
   local src
   if bytes:sub(1, 4) == "RIFF" then
-    local img = webp.decode(bytes)
+    local img = webp.decode(bytes, tick)
     if img.w ~= N or img.h ~= N then error("height: WebP elevation tile is not 512 x 512") end
     local R, G, B = img.R, img.G, img.B
-    for i = 0, N * N - 1 do h[i] = R[i] * 256 + G[i] + B[i] / 256 - 32768 end
+    for i = 0, N * N - 1 do
+      h[i] = R[i] * 256 + G[i] + B[i] / 256 - 32768
+      if tick and i % 16384 == 0 then tick() end
+    end
     src = "mapterhorn"
   else
     local img = png.decode(bytes)
@@ -48,6 +51,7 @@ function M:add(x, y, bytes)
     end
     -- resample to 512: pixel centres at (i + 0.5) / 512 of the tile, bilinear on the 256 grid (clamped inside)
     for yy = 0, N - 1 do
+      if tick and yy % 32 == 0 then tick() end
       local fy = (yy + 0.5) / 2 - 0.5
       if fy < 0 then fy = 0 elseif fy > 255 then fy = 255 end
       local iy = floor(fy); if iy > 254 then iy = 254 end
@@ -67,6 +71,8 @@ function M:add(x, y, bytes)
   return src
 end
 
+function M:drop(x, y) self.tiles[key(x, y)] = nil end
+
 -- height of one global pixel (integer pixel coordinates)
 local function pixel(self, ix, iy)
   local tx, ty = floor(ix / N), floor(iy / N)
@@ -85,6 +91,20 @@ function M:at(gx, gy)
   return (h00 * (1 - ax) + h10 * ax) * (1 - ay) + (h01 * (1 - ax) + h11 * ax) * ay
 end
 
+-- like at, but where a neighbouring tile is missing the nearest available pixel is used (for the distant ground,
+-- which only loads the tiles it covers)
+function M:at_soft(gx, gy)
+  local fx, fy = gx / PX - 0.5, gy / PX - 0.5
+  local ix, iy = floor(fx), floor(fy)
+  local ax, ay = fx - ix, fy - iy
+  local h00, h10 = pixel(self, ix, iy), pixel(self, ix + 1, iy)
+  local h01, h11 = pixel(self, ix, iy + 1), pixel(self, ix + 1, iy + 1)
+  local any = h00 or h10 or h01 or h11
+  if not any then return nil end
+  h00 = h00 or h10 or h01 or h11; h10 = h10 or h00; h01 = h01 or h00; h11 = h11 or h10 or h01
+  return (h00 * (1 - ax) + h10 * ax) * (1 - ay) + (h01 * (1 - ax) + h11 * ax) * ay
+end
+
 local OFF = { { 0, 0 } }
 for k = 0, 11 do
   local a = k * math.pi / 6
@@ -98,6 +118,22 @@ function M:min_around(gx, gy, r)
     if h and (not m or h < m) then m = h end
   end
   return m
+end
+
+-- lowest height around a point, looked up on a fixed global grid (about 8 m at 55 deg N) and remembered, so
+-- every cell gets the same value at the same place and water vertices don't each sample 25 points
+local WG = 256
+function M:water_level(gx, gy, r)
+  local ix, iy = floor(gx / WG + 0.5), floor(gy / WG + 0.5)
+  local c = self.wl
+  if not c then c = {}; self.wl = c end
+  local k = ix * 1048576 + iy + r * 1e12
+  local v = c[k]
+  if v == nil then
+    v = self:min_around(ix * WG, iy * WG, r) or false
+    c[k] = v
+  end
+  return v or nil
 end
 
 -- zoom-14 tiles covering an area of global units, plus a margin of two pixels for the bilinear filter

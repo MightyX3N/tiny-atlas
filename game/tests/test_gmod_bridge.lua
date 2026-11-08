@@ -14,7 +14,8 @@ check("gamemode loads; OmniPlay API present", OmniPlay ~= nil and OmniPlay.Get ~
 check("bridge uses the data folder (no module installed)", OmniPlay.Native == false)
 hook.Run("InitPostEntity")
 check("trainer created", TinyAtlas.Ride.trainer ~= nil)
-check("old renderer gone: nothing hooks RenderScene", next(F.hooks.RenderScene or {}) == nil)
+check("no auto-start: the world view draws nothing until a ride starts", F.render_frame(1 / 60) == nil and F.frame_draws == 0)
+check("ride commands registered", F.commands.ta_ride ~= nil and F.commands.ta_roam ~= nil and F.commands.ta_stop ~= nil)
 check("new builder bench command registered", F.commands.ta_buildbench ~= nil)
 
 -- a test route: flat, then a 6 % climb from 100 m

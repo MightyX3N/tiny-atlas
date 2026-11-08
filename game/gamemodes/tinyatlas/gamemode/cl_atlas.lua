@@ -57,11 +57,11 @@ local function run_jobs()
   local job = jobs[1]
   local now = RealTime and RealTime() or SysTime()
   if not job.next_note then job.next_note = now + 3 end
-  if now >= job.next_note then
+  if now >= job.next_note and not job.quiet then
     job.next_note = now + 3
     print(string.format("[Tiny Atlas] still working: %s (%.1f s CPU so far)", job.where or "starting", job.cpu))
   end
-  local frame_end = SysTime() + budget:GetFloat() / 1000
+  local frame_end = SysTime() + (TinyAtlasJobs.boost_ms or budget:GetFloat()) / 1000
   while #jobs > 0 and SysTime() < frame_end do
     local job = jobs[1]
     job.slice_end = frame_end
@@ -85,7 +85,10 @@ hook.Add("PostRender", "TinyAtlasBuildJobs", run_jobs)
 
 
 
-local function add_job(fn)
+local add_job
+TinyAtlasJobs = { add = function(fn) return add_job(fn) end }
+
+function add_job(fn)
   local job = { cpu = 0, slices = 0 }
   job.tick = function()
     if SysTime() >= job.slice_end then coroutine.yield() end
@@ -184,7 +187,8 @@ concommand.Add("ta_fetch_testdata", function()
   for _, a in ipairs(TEST_AREAS) do
     local x0, y1 = fetch.tile_of(a[2], a[4], 14)
     local x1, y0 = fetch.tile_of(a[3], a[5], 14)
-    for x = x0, x1 do for y = y0, y1 do
+    -- one tile more all round: cells at the edge need the elevation (and map) next to them
+    for x = x0 - 1, x1 + 1 do for y = y0 - 1, y1 + 1 do
       queue[#queue + 1] = { "omt", x, y }
       queue[#queue + 1] = { "terrarium", x, y }
       queue[#queue + 1] = { "mapterhorn", x, y }

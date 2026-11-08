@@ -8,6 +8,12 @@ local tot = { cells = 0, ms = 0, problems = 0, worst_water = 0, worst_slope = 0,
 for i = 2, #arg do
   local tx, ty = arg[i]:match("(%d+)%D+(%d+)")
   tx, ty = tonumber(tx), tonumber(ty)
+  -- tiles at the edge of the test data lack elevation around them: they are not tested
+  local all = true
+  for dx = -1, 1 do for dy = -1, 1 do
+    if not exists(CACHE .. "/terrarium/14/" .. (tx + dx) .. "_" .. (ty + dy) .. ".dat") then all = false end
+  end end
+  if not all then tot.edge = (tot.edge or 0) + 1; goto continue end
   local L = mvt.decode(readfile(CACHE .. "/omt/14/" .. tx .. "_" .. ty .. ".dat"))
   local H = height.new()
   for dx = -1, 1 do for dy = -1, 1 do
@@ -51,6 +57,8 @@ for i = 2, #arg do
       f:close()
     end
   end end
+  ::continue::
 end
+if tot.edge then print(tot.edge .. " tiles at the edge of the test data skipped (no elevation around them)") end
 print(string.format("cells %d  mean %.1f ms (cut + heights)  cells with problems %d  water range max %.2f m  road slope max %.0f %%  steep road triangles %d  wall edges %d",
   tot.cells, tot.ms / tot.cells, tot.problems, tot.worst_water, tot.worst_slope * 100, tot.steep, tot.walls))

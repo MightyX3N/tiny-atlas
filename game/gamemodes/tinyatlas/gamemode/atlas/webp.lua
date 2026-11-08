@@ -12,6 +12,8 @@ local M = {}
 
 -- ---------------------------------------------------------------------------------------------------------
 -- bit reader (least significant bit first)
+local TICK = function() end                       -- called now and then during a decode (see M.decode)
+
 local function reader(s, p)
   local R = { s = s, p = p, bb = 0, bn = 0, n = #s }
   return R
@@ -218,7 +220,9 @@ function decode_image(R, w, h, main)
     end
     cached = upto
   end
+  local next_tick = 4096
   while pos < total do
+    if pos >= next_tick then TICK(); next_tick = pos + 4096 end
     local x, y = pos % w, floor(pos / w)
     local grp = meta and groups[meta[floor(y / mdiv) * mw + floor(x / mdiv)]] or groups[0]
     local s = decode(R, grp[1])
@@ -268,6 +272,7 @@ local function inv_predictor(img, tb, tw, sbits)
   local div = 2 ^ sbits
   local TG = tb[3]
   for y = 0, h - 1 do
+    if y % 16 == 0 then TICK() end
     for x = 0, w - 1 do
       local i = y * w + x
       local pa, pr, pg, pb
@@ -328,6 +333,7 @@ local function inv_color(img, tb, tw, sbits)
   local div = 2 ^ sbits
   local TR, TG, TB = tb[2], tb[3], tb[4]
   for y = 0, h - 1 do
+    if y % 16 == 0 then TICK() end
     for x = 0, w - 1 do
       local i = y * w + x
       local e = floor(y / div) * tw + floor(x / div)
@@ -356,6 +362,7 @@ local function inv_index(img, pal, wbits, full_w)
   local mask = 2 ^ bpp
   local pA, pR, pG, pB, n = pal[1], pal[2], pal[3], pal[4], pal.n
   for y = 0, h - 1 do
+    if y % 16 == 0 then TICK() end
     for x = 0, full_w - 1 do
       local packed = G[y * w + floor(x / per)]
       local idx = floor(packed / 2 ^ (bpp * (x % per))) % mask
@@ -369,7 +376,9 @@ end
 
 -- ---------------------------------------------------------------------------------------------------------
 
-function M.decode(s)
+-- tick: optional function called every few thousand pixels (a build job yields there when its time is up)
+function M.decode(s, tick)
+  TICK = tick or function() end
   if sub(s, 1, 4) ~= "RIFF" or sub(s, 9, 12) ~= "WEBP" then error("webp: not a WebP file") end
   local p = 13
   local data
