@@ -20,9 +20,15 @@ local S = 8192          -- cell size in cell units
 local SCALE = 16        -- cell units per vector tile unit
 M.S = S
 
+-- surfaces a rider can be on (roads are flattened across their width)
+M.ROADLIKE = { road = true, road_unpaved = true, cycleway = true, path = true, path_unpaved = true, track = true,
+  rail = true }
+M.WATER = { water = true, sea = true }
+
 -- surfaces and their priority (higher wins where shapes overlap)
 M.PRIORITY = {
-  building = 90, road = 80, path = 78, rail = 76, pier = 75, water = 70, paved = 60,
+  building = 90, road = 80, road_unpaved = 79, cycleway = 78, path = 77, path_unpaved = 77, rail = 76, track = 75,
+  pier = 74, water = 70, sea = 70, paved = 60,
   sand = 45, wetland = 44, wood = 40, park = 32, grass = 30, pitch = 34, cemetery = 26, farmland = 20,
   rock = 18, ice = 18, residential = 10, commercial = 12, industrial = 12, ground = 0,
 }
@@ -123,6 +129,7 @@ end
 -- line feature -> union of quads (one per segment) and bevel triangles at the joints, width w in cell units
 local function line_shape(f, surf, ox, oy, w)
   local sh = new_shape(surf, "union")
+  sh.lines, sh.width = {}, w
   local h = w / 2
   for _, part in ipairs(f.parts) do
     local xs, ys, n = {}, {}, 0
@@ -130,6 +137,7 @@ local function line_shape(f, surf, ox, oy, w)
       local x, y = (part[k] - ox) * SCALE, (part[k + 1] - oy) * SCALE
       if n == 0 or abs(x - xs[n]) + abs(y - ys[n]) > 0.5 then n = n + 1; xs[n] = x; ys[n] = y end
     end
+    if n >= 2 then sh.lines[#sh.lines + 1] = { xs = xs, ys = ys, n = n } end
     local pnx, pny
     for k = 1, n - 1 do
       local dx, dy = xs[k + 1] - xs[k], ys[k + 1] - ys[k]
@@ -165,7 +173,8 @@ end
 local function classify(layer, p, ftype)
   if layer == "water" then
     if p.brunnel == "tunnel" then return nil end
-    return "water", "poly"
+    if p.class == "swimming_pool" then return nil end
+    return p.class == "ocean" and "sea" or "water", "poly"
   elseif layer == "building" then
     return "building", "poly"
   elseif layer == "landcover" then
@@ -191,8 +200,13 @@ local function classify(layer, p, ftype)
     if c == "ferry" or c == "aerialway" then return nil end
     local w = ROAD_W[c]
     if not w or w == 0 then return nil end
-    if c == "path" then return "path", "line", w end
-    return "road", "line", w
+    local unpaved = p.surface == "unpaved"
+    if c == "path" then
+      if p.subclass == "cycleway" then return "cycleway", "line", w end
+      return unpaved and "path_unpaved" or "path", "line", w
+    end
+    if c == "track" then return "track", "line", w end
+    return unpaved and "road_unpaved" or "road", "line", w
   elseif layer == "waterway" then
     if p.brunnel == "tunnel" then return nil end
     local w = WATERWAY_W[p.class]
@@ -581,7 +595,8 @@ function M.build(layers, cx, cy, lat, opts)
   for t = 1, T.nt do
     if not surf[t] then problems[#problems + 1] = "triangle without a surface"; break end
   end
-  return { S = S, X = X, Y = Y, V = V, C = C, nt = T.nt, surf = surf, stats = stats, problems = problems, mpu = mpu }
+  return { S = S, X = X, Y = Y, V = V, C = C, N = T.N, nt = T.nt, np = T.np, surf = surf, stats = stats,
+    problems = problems, mpu = mpu, shapes = shapes, cx = cx, cy = cy }
 end
 
 M._split_all = split_all          -- for tests

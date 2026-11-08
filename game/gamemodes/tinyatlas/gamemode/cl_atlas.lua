@@ -187,9 +187,16 @@ concommand.Add("ta_fetch_testdata", function()
     for x = x0, x1 do for y = y0, y1 do
       queue[#queue + 1] = { "omt", x, y }
       queue[#queue + 1] = { "terrarium", x, y }
+      queue[#queue + 1] = { "mapterhorn", x, y }
     end end
   end
+  -- skip what is already in the cache, so running it again only fetches what is missing
+  local todo = {}
+  for _, q in ipairs(queue) do if not P.read(F:path(q[1], 14, q[2], q[3])) then todo[#todo + 1] = q end end
+  print(string.format("[Tiny Atlas] %d of %d test tiles already cached", #queue - #todo, #queue))
+  queue = todo
   local total, done, failed, running, nexti = #queue, 0, 0, 0, 1
+  if total == 0 then print("[Tiny Atlas] test data: everything is already cached") return end
   local bytes0 = F.stats.bytes
   local t0, last_note = SysTime(), SysTime()
   print(string.format("[Tiny Atlas] fetching %d tiles for %d test areas...", total, #TEST_AREAS))

@@ -15,6 +15,8 @@ local M = {}
 M.SOURCES = {
   -- OpenMapTiles-schema vector tiles from OpenFreeMap; the planet version comes from its TileJSON
   omt = { tilejson = "https://tiles.openfreemap.org/planet", maxzoom = 14, ext = "dat" },
+  -- Mapterhorn elevation: Terrarium-encoded lossless WebP, 512 px; high-resolution areas only above zoom 12
+  mapterhorn = { url = "https://tiles.mapterhorn.com/{z}/{x}/{y}.webp", maxzoom = 17, ext = "dat" },
   -- Terrarium elevation PNGs (Mapzen / AWS open data); 256 px, up to zoom 15
   terrarium = { url = "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png", maxzoom = 15, ext = "dat" },
 }
