@@ -140,6 +140,8 @@ local function feature(s, p, e, keys, vals)
   return f
 end
 
+local TICK = function() end                      -- see M.decode
+
 local function layer(s, p, e)
   local L = { extent = 4096, features = {} }
   local keys, vals, feats = {}, {}, {}
@@ -153,11 +155,16 @@ local function layer(s, p, e)
     elseif fld == 5 then L.extent, p = varint(s, p)
     else p = skip(s, p, wt) end
   end
-  for i = 1, #feats do L.features[i] = feature(s, feats[i][1], feats[i][2], keys, vals) end
+  for i = 1, #feats do
+    L.features[i] = feature(s, feats[i][1], feats[i][2], keys, vals)
+    if i % 16 == 0 then TICK() end
+  end
   return L
 end
 
-function M.decode(s)
+-- tick: optional, called every few dozen features (a build job yields there when its time is up)
+function M.decode(s, tick)
+  TICK = tick or function() end
   local layers, p, e = {}, 1, #s + 1
   while p < e do
     local key; key, p = varint(s, p)

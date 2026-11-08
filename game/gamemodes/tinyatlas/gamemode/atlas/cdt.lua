@@ -98,7 +98,10 @@ M.flip = flip
 local function legalize(T, stack, sn)
   local V, N, C, X, Y = T.V, T.N, T.C, T.X, T.Y
   local guard = 0
+  local tick, steps = T.tick, 0
   while sn > 0 do
+    steps = steps + 1
+    if tick and steps % 512 == 0 then tick() end
     local i = stack[sn]; local t = stack[sn - 1]; sn = sn - 2
     local o = 3 * t - 3
     local u = N[o + i]
@@ -428,6 +431,7 @@ function M.check(T)
   local V, N, C, X, Y = T.V, T.N, T.C, T.X, T.Y
   local area2, bad = 0, {}
   for t = 1, T.nt do
+    if T.tick and t % 512 == 0 then T.tick() end
     local o = 3 * t - 3
     local a, b, c = V[o + 1], V[o + 2], V[o + 3]
     local d = orient(X[a], Y[a], X[b], Y[b], X[c], Y[c])

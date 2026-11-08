@@ -18,7 +18,7 @@ local MAX_GRADE = { road = 0.18, cycleway = 0.18, road_unpaved = 0.25, rail = 0.
   path_unpaved = 0.4 }
 
 -- road centre lines with smoothed heights, and a bucket grid over their segments
-local function centrelines(r, H, gx0, gy0, mpu)
+local function centrelines(r, H, gx0, gy0, mpu, tick)
   local step = 6 / mpu                              -- sample every 6 m along each line
   local win = 25 / mpu                              -- smooth over +-25 m
   local S = r.S
@@ -46,6 +46,7 @@ local function centrelines(r, H, gx0, gy0, mpu)
             k = k + 1
           end
           local k1 = k                                -- segments k0 .. k1 - 1, vertices k0 .. k1
+          tick()
         -- densify, keeping the distance along the line
         local xs, ys, ds, hs = {}, {}, {}, {}
         local n, d = 1, 0
@@ -70,6 +71,7 @@ local function centrelines(r, H, gx0, gy0, mpu)
           local out = {}
           local lo2 = 1
           for j = 1, n do
+            if j % 64 == 0 then tick() end
             while ds[lo2] < ds[j] - cw do lo2 = lo2 + 1 end
             local v = src[j]
             local q = lo2
@@ -152,6 +154,7 @@ local function centrelines(r, H, gx0, gy0, mpu)
     return sqrt((px - ax - dx * t) ^ 2 + (py - ay - dy * t) ^ 2)
   end
   for _, G in pairs(grid) do
+    tick()
     for a = 1, G.n, 2 do
       local li, k = G[a], G[a + 1]
       local L = lines[li]
@@ -298,7 +301,7 @@ end
 -- Water polygons of one tile that share a corner are one body of water (OSM splits big water areas into pieces):
 -- every standing piece of a group gets the group's lowest level. Done once per tile; levels are remembered per
 -- feature id for the whole session, so cells of other tiles reuse them.
-local function tile_levels(layer, H, tgx, tgy, mpu)
+local function tile_levels(layer, H, tgx, tgy, mpu, tick)
   local cache = H.levels
   if not cache then cache = {}; H.levels = cache end
   if layer._levels_done then return cache end
@@ -325,6 +328,7 @@ local function tile_levels(layer, H, tgx, tgy, mpu)
   for i, f in ipairs(feats) do
     local key = f.props.id or f
     if cache[key] == nil then
+      tick()
       own[i] = own_level(f, H, tgx, tgy, mpu) or false
       local o = own[i]
       if o and not o.flowing then
@@ -360,8 +364,9 @@ function M.heights(r, H, gx0, gy0, opts)
   local tgx, tgy = gx0 - r.cx * 8192, gy0 - r.cy * 8192   -- the zoom-14 tile's origin, for its features
   local r_water = 50 / mpu
   local wet, roady, used, tri_level, flowing_tri = {}, {}, {}, {}, {}
-  local levels = r.water_layer and tile_levels(r.water_layer, H, tgx, tgy, mpu) or {}
+  local levels = r.water_layer and tile_levels(r.water_layer, H, tgx, tgy, mpu, tick) or {}
   for t = 1, nt do
+    if t % 64 == 0 then tick() end
     local o = 3 * t - 3
     local s = surf[t]
     if WATER[s] then
@@ -393,7 +398,7 @@ function M.heights(r, H, gx0, gy0, opts)
     end
   end
 
-  local lines, grid, B = centrelines(r, H, gx0, gy0, mpu)
+  local lines, grid, B = centrelines(r, H, gx0, gy0, mpu, tick)
   tick()
   local land, water = {}, {}
   local missing = 0

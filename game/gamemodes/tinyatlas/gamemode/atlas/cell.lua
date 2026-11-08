@@ -113,7 +113,7 @@ local function add_ring(sh, r)
 end
 
 -- polygon feature (tile units) -> shape in cell units, snapped to the grid
-local function polygon_shape(f, surf, ox, oy)
+local function polygon_shape(f, surf, ox, oy, tick)
   local sh = new_shape(surf, "evenodd")
   for _, part in ipairs(f.parts) do
     local r = {}
@@ -122,6 +122,7 @@ local function polygon_shape(f, surf, ox, oy)
       r[k + 1] = floor((part[k + 1] - oy) * SCALE + 0.5)
     end
     if #r >= 8 then add_ring(sh, r) end
+    if tick then tick() end
   end
   return sh
 end
@@ -265,7 +266,7 @@ local function collect(layers, cx, cy, mpu, tick)
           if x1 + pad >= m0 and x0 - pad <= m1 and y1 + pad >= m0 and y0 - pad <= m1 then
             local sh
             if how == "poly" then
-              sh = polygon_shape(f, surf, ox, oy)
+              sh = polygon_shape(f, surf, ox, oy, tick)
               if M.WATER[surf] then sh.feature = f end      -- ground.lua finds the water level per feature
             elseif f.type == 2 then sh = line_shape(f, surf, ox, oy, wm / mpu) end
             if sh and #sh.rings > 0 then shapes[#shapes + 1] = sh end

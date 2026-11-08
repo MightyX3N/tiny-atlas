@@ -5,7 +5,8 @@
 --                          you put in garrysmod/data/tinyatlas/gpx/
 --   ta_roam [lat] [lon]    ride freely from a place (default: central Copenhagen); A / D steer
 --   ta_stop                back to the normal game view
--- It says what it is doing in the console by itself: route preparation, loading, problems, FAILED lines.
+-- The world is built while you ride; the route gets its heights as the cells along it are built. It says what it is
+-- doing in the console by itself: loading, how riding goes every 30 s, falling behind, problems, FAILED lines.
 local world = ATLAS_REQUIRE("world")
 local route = ATLAS_REQUIRE("route")
 local mesh_lib = ATLAS_REQUIRE("mesh")
@@ -106,33 +107,20 @@ local function start(opts)
     make = make_meshes, free = free_meshes, log = say,
   })
   V.W, V.R, V.mode, V.on = W, opts.R, opts.mode, true
-  V.s, V.phase, V.progress, V.t = 0, opts.R and "route" or "loading", nil, 0
+  V.s, V.phase, V.progress, V.t = 0, "loading", nil, 0
+  V.perf = { n = 0, sum = 0, worst = 0, behind = false }
   V.plan_t, V.O, V.note_t = 0, nil, 0
   V.x, V.y, V.z, V.fx, V.fy = 0, 0, 0, 1, 0
   V.started = SysTime()
   V.frames = 0
   if opts.R then
     opts.R.world = W
-    W.route = opts.R
+    W:set_route(opts.R)             -- route heights come in as the cells along it are built
   end
   if TinyAtlasJobs then TinyAtlasJobs.boost_ms = MAX_BOOST_MS end
   V.job = TinyAtlasJobs.add(function(job)
     job.where = "the world"
     job.quiet = true
-    local R = V.R
-    if R then
-      job.where = "preparing the route"
-      local sum = W:prepare_route(R, job.tick, function(i, n) V.progress = { i, n } end)
-      if job.cancel then return end
-      say(string.format("route ready: %.2f km, climbing %.0f m, steepest %.1f %% (at %.2f km), %.0f m steeper than 25 %%",
-        sum.length / 1000, sum.climb, sum.worst_grade, sum.worst_at / 1000, sum.steep_m))
-      if sum.gaps > 0 then
-        say(string.format("  %d bridges / tunnels on the route (%.0f m): ridden straight across until bridges are built", sum.gaps, sum.gap_m))
-      end
-      if sum.failed > 0 then say(string.format("  FAILED: %d of %d route cells could not be built (no map data)", sum.failed, sum.cells)) end
-      V.phase = "loading"
-      V.plan_t = 0
-    end
     job.where = "building the world"
     while not job.cancel and V.W == W do
       if not W:work(job.tick, SysTime) then coroutine.yield() end
@@ -154,7 +142,7 @@ function V.StartRoute(name)
   local tmp = world.new({ fetch = TinyAtlasFetch, lat = lat, lon = lon, tile_metres = 3.3, unit = U,
     make = function() end, free = function() end })
   local R = route.new(g.points, tmp)
-  say(string.format("riding %s (%.2f km): preparing the route...", g.name or name, R.length / 1000))
+  say(string.format("riding %s (%.2f km): building the world around the start...", g.name or name, R.length / 1000))
   TinyAtlas.Route = R
   if TinyAtlas.Ride then TinyAtlas.Ride.s = 0 end
   return start({ mode = "ride", R = R, lat = lat, lon = lon })
@@ -237,14 +225,30 @@ local rider_col = Color(200, 57, 47)
 local function status_note()
   local W = V.W
   local now = SysTime()
-  if now < V.note_t then return end
-  V.note_t = now + 3
-  if V.phase == "route" and V.progress then
-    say(string.format("preparing the route: %d of %d cells", V.progress[1], V.progress[2]))
-  elseif V.phase == "loading" then
+  if V.phase == "loading" then
+    if now < V.note_t then return end
+    V.note_t = now + 3
     local miss, total = W:missing_near(300)
     say(string.format("building the world around you: %d of %d cells ready", total - miss, total))
+    return
   end
+  -- while riding: how it is doing, every 30 s, and straight away when the world falls behind the rider
+  local P = V.perf
+  local ahead, all = 0, true
+  if V.mode == "ride" then ahead, all = W:route_ready_ahead(V.s) end
+  local behind = V.mode == "ride" and not all and ahead < 150
+  if behind and not P.behind then
+    say(string.format("FALLING BEHIND: the world is built only %.0f m ahead of you (%d cells waiting)", ahead, #W.queue))
+  end
+  P.behind = behind
+  if now < V.note_t then return end
+  V.note_t = now + 30
+  if P.n == 0 then return end
+  say(string.format("riding: %.0f fps, worst frame %.0f ms | %s | %d cells built (%.0f ms each), %d waiting, %d failed",
+    P.n / P.sum, P.worst * 1000,
+    V.mode == "ride" and (all and "world built to the finish" or string.format("world built %.0f m ahead", ahead)) or "free roam",
+    W.stats.built, W.stats.built > 0 and W.stats.ms / W.stats.built or 0, #W.queue, W.stats.failed))
+  P.n, P.sum, P.worst = 0, 0, 0
 end
 
 local function frame(fov)
@@ -252,23 +256,29 @@ local function frame(fov)
   local dt = RealFrameTime()
   V.t = V.t + dt
   V.frames = V.frames + 1
-  local x, y, z, fx, fy = 0, 0, 0, 1, 0
-  if V.phase ~= "route" then x, y, z, fx, fy = rider() end
+  if V.phase == "riding" then
+    local P = V.perf
+    P.n, P.sum = P.n + 1, P.sum + dt
+    if dt > P.worst then P.worst = dt end
+  end
+  local x, y, z, fx, fy = rider()
   V.x, V.y, V.z, V.fx, V.fy = x, y, z, fx, fy
   -- plan a few times a second
   V.plan_t = V.plan_t - dt
-  if V.plan_t <= 0 and V.phase ~= "route" then
+  if V.plan_t <= 0 then
     W.s = V.s
     W:focus(x, y, fx, fy)
     V.plan_t = 0.25
   end
   if V.phase == "loading" then
     local miss = W:missing_near(300)
-    if miss == 0 then
+    -- ready when the ground around the start is built (and, on a route, the start has its height)
+    if miss == 0 and (V.mode ~= "ride" or V.R.known[1]) then
       V.phase = "riding"
       TinyAtlasJobs.boost_ms = nil
       say(string.format("world ready in %.1f s (%d cells built, %.0f ms each on average)", SysTime() - V.started,
         W.stats.built, W.stats.built > 0 and W.stats.ms / W.stats.built or 0))
+      V.note_t = SysTime() + 30
       if V.mode == "roam" and not W:height_at(V.x, V.y) then say("FAILED: no ground under the start point") end
       if V.mode == "roam" then V.z = W:height_at(V.x, V.y) or 0; z = V.z end
     end
@@ -337,7 +347,7 @@ local function frame(fov)
   end
   for _, c in ipairs(vis) do tris = tris + c.handle.tris end
   -- the rider (a stand-in until the bike model is in)
-  if V.phase ~= "route" then
+  do
     render.SetColorMaterial()
     render.DrawBox(Vector((x - O[1]) * U, (y - O[2]) * U, (z - O[3]) * U), Angle(0, math.deg(math.atan2(fy, fx)), 0),
       Vector(-0.9, -0.25, 0) * U, Vector(0.9, 0.25, 1.7) * U, rider_col)
@@ -353,15 +363,9 @@ surface.CreateFont("TinyAtlas_ViewSmall", { font = "Arial", size = 16, weight = 
 local function hud()
   local W = V.W
   local sw, sh = ScrW(), ScrH()
-  if V.phase == "route" or V.phase == "loading" then
-    local done, total, label
-    if V.phase == "route" then
-      done, total = V.progress and V.progress[1] or 0, V.progress and V.progress[2] or 1
-      label = "Preparing the route"
-    else
-      local miss, tot = W:missing_near(300)
-      done, total, label = tot - miss, math.max(tot, 1), "Building the world around you"
-    end
+  if V.phase == "loading" then
+    local miss, tot = W:missing_near(300)
+    local done, total, label = tot - miss, math.max(tot, 1), "Building the world around you"
     local bw, bh = math.min(560, sw - 80), 14
     local bx, by = (sw - bw) / 2, sh / 2 + 18
     surface.SetDrawColor(0, 0, 0, 150)

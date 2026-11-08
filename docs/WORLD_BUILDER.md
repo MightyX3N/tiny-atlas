@@ -78,16 +78,23 @@ inside it), shared by all pieces of a water body that touch; areas whose elevati
 downhill and get local levels, like streams. The sea is at 0 m. Banks stay 30 cm above the water, and quay walls go
 from the bank down to under the water.
 
-**Routes.** The cells a route passes are built once before the ride to give every route point the height of the
-drawn ground. On a bridge or in a tunnel (not built until milestone 3) the route goes straight across.
+**Routes.** Nothing is prepared in advance: the ride starts as soon as the ground around the start is built (about
+2 s), and every route point gets the height of the drawn ground when the cell it lies in is built. Cells along the
+route are built first, up to 1.2 km ahead, so the trainer always knows the gradient in time. On a bridge or in a
+tunnel (not built until milestone 3) the route goes straight across.
 
 **Checks after every cell:** standing water level within 1.5 m in each water area, and no more than 5 % (and 60 m2)
 of the road area steeper than 30 %.
 
 **In Garry's Mod** (`cl_view.lua`): `ta_ride <route>` (test routes in `gamemodes/tinyatlas/routes/`, or your own
-GPX in `garrysmod/data/tinyatlas/gpx/`), `ta_roam [lat lon]`, `ta_stop`. It prepares the route and builds the world
-around you with a progress bar, then streams cells as you ride; beyond 700 m a coarse distant ground (elevation only)
-is drawn. Status and FAILED lines go to the console by themselves.
+GPX in `garrysmod/data/tinyatlas/gpx/`), `ta_roam [lat lon]`, `ta_stop`. It builds the world around the start with a
+progress bar, then streams cells as you ride; beyond 700 m a coarse distant ground (elevation only) is drawn. The
+console says by itself how riding goes every 30 s (frame rate, worst frame, how far ahead the world is built, cells
+built and waiting), warns straight away when the world falls behind the rider, and prints FAILED lines.
+
+**Live ride test:** `game/tests/test_live_ride.lua` rides a route in the fake GMod at 60 frames a second with the
+normal 4 ms build budget, the way a player would, and reports start time, how far ahead the world stays, and Lua time
+per frame. Every long piece of work yields to the next frame (map tile and image decoding included).
 
 **Test routes** (`tools/routes/make_routes.lua` routes them along OSM roads from the cached tiles): Amsterdam city
 run (10 km), Amsterdam canal ring (11.3 km), Copenhagen lakes and harbour (14.2 km), Alpe d'Huez to the village

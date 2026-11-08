@@ -13,7 +13,8 @@
 --                       Returns false when there is nothing to do.
 --   W:focus(x, y, fx, fy)   where the rider is and which way they look; picks the cells to build / drop
 --   W:height_at(x, y) -> z, surface   on the built ground (nil if that cell is not built)
---   W:prepare_route(R, tick, progress)  builds the cells a route passes (no meshes) to give it heights
+--   W:set_route(R)      the route being ridden: its points get their heights as the cells under them are built
+--   W:route_ready_ahead(s) -> metres of route from s that have heights
 local fetch = ATLAS_REQUIRE("fetch")
 local mvt = ATLAS_REQUIRE("mvt")
 local cell = ATLAS_REQUIRE("cell")
@@ -29,6 +30,7 @@ M.DROP_RADIUS = 900           -- metres: cells farther than this are dropped
 M.AHEAD = 1200                -- metres of route ahead that are built early
 M.KEEP_TILES = 8              -- decoded vector tiles kept
 M.KEEP_HEIGHTS = 25           -- decoded elevation tiles kept
+local fill_route                                 -- defined below, used by work
 local CELL = 8192             -- global units per cell (zoom 17)
 local TILE = 65536            -- global units per zoom-14 tile
 local WORLD = 2 ^ 14 * TILE
@@ -101,7 +103,7 @@ local function ensure(self, tx, ty, tick)
     h.used = self.clock
   end
   if t.state == "bytes" then
-    local ok, layers = pcall(mvt.decode, t.bytes)
+    local ok, layers = pcall(mvt.decode, t.bytes, tick)
     if ok then t.layers = layers; t.state = "ready" else t.state = "failed"; self.log("FAILED: map tile " .. tx .. "/" .. ty .. ": " .. tostring(layers)) end
     t.bytes = nil
   end
@@ -261,6 +263,11 @@ function M:work(tick, clock)
     c.state = "failed"
     self.stats.failed = self.stats.failed + 1
     if not ok then self.log(string.format("FAILED: cell %d/%d: %s", cx, cy, tostring(r))) end
+    local list = self.route and self.route_idx[key]
+    if list then
+      for _, k in ipairs(list) do self.route.known[k] = true end
+      self.route:finish_heights()
+    end
     return true
   end
   c.ox, c.oy = self:metres_of(cx * CELL, cy * CELL)
@@ -276,6 +283,7 @@ function M:work(tick, clock)
   end
   c.handle = self.o.make(groups, c)
   c.state = "ready"
+  fill_route(self, cx, cy, r, g)
   self.stats.built = self.stats.built + 1
   if t0 then self.stats.ms = self.stats.ms + (clock() - t0) * 1000 end
   return true
@@ -289,48 +297,71 @@ function M:height_at(x, y)
   return mesh.height_at(c.r, c.g, gx - cx * CELL, gy - cy * CELL)
 end
 
--- the cells a route passes, built once (no meshes) to give every route point the height of the drawn ground
-function M:prepare_route(R, tick, progress)
+-- the route being ridden: its points get the height of the drawn ground as the cells they lie in are built
+function M:set_route(R)
   self.route = R
-  local list = R:cells()
   local idx = {}
   for k = 1, R.n do
     local key = ckey(floor(R.GX[k] / CELL), floor(R.GY[k] / CELL))
     local L = idx[key]; if not L then L = {}; idx[key] = L end
     L[#L + 1] = k
   end
+  self.route_idx = idx
+end
+
+function fill_route(self, cx, cy, r, g)
+  local R = self.route
+  local list = R and self.route_idx[ckey(cx, cy)]
+  if not list then return false end
+  for _, k in ipairs(list) do
+    local x, y = R.GX[k] - cx * CELL, R.GY[k] - cy * CELL
+    local z, s = mesh.height_at(r, g, x, y)
+    local on_brunnel = false
+    for _, b in ipairs(r.brunnels) do
+      for j = 1, b.n - 1 do
+        local ax, ay, bx, by = b.xs[j], b.ys[j], b.xs[j + 1], b.ys[j + 1]
+        local dx, dy = bx - ax, by - ay
+        local l2 = dx * dx + dy * dy
+        local t = l2 > 0 and ((x - ax) * dx + (y - ay) * dy) / l2 or 0
+        if t < 0 then t = 0 elseif t > 1 then t = 1 end
+        -- on it means close to it and going the same way (a route crossing under a bridge keeps the ground)
+        if sqrt((x - ax - dx * t) ^ 2 + (y - ay - dy * t) ^ 2) <= b.half + 2 / r.mpu and l2 > 0 then
+          local fx, fy = R:dir(R.S[k])
+          local c = (fx * dx - fy * dy) / sqrt(l2)          -- cell y runs south, route y north
+          if c > 0.9 or c < -0.9 then on_brunnel = b.kind; break end
+        end
+      end
+      if on_brunnel then break end
+    end
+    -- on a bridge or in a tunnel (built with the bridge models later), or over water: no ground height here
+    if z and not on_brunnel and not cell.WATER[s] then R.ZR[k] = z; R.surf[k] = s
+    else R.surf[k] = on_brunnel or (s and "bridge") or nil end
+    R.known[k] = true
+  end
+  R:finish_heights()
+  return true
+end
+
+-- route metres from s that already have their heights (the world is built that far ahead along the route)
+function M:route_ready_ahead(s)
+  local R = self.route
+  if not R then return 0 end
+  local k = max(1, floor(s / 2) + 1)
+  local k0 = k
+  while k <= R.n and R.known[k] do k = k + 1 end
+  return (k - k0) * 2, k > R.n
+end
+
+-- all the cells a route passes, built one after the other without meshes (used by the route tests)
+function M:prepare_route(R, tick, progress)
+  self:set_route(R)
+  local list = R:cells()
   local failed = 0
   for i, c in ipairs(list) do
     if progress then progress(i - 1, #list) end
     local cx, cy = c[1], c[2]
     local ok, r, g = pcall(self.build_cell, self, cx, cy, tick)
-    if ok and r then
-      for _, k in ipairs(idx[ckey(cx, cy)]) do
-        local x, y = R.GX[k] - cx * CELL, R.GY[k] - cy * CELL
-        local z, s = mesh.height_at(r, g, x, y)
-        local on_brunnel = false
-        for _, b in ipairs(r.brunnels) do
-          for j = 1, b.n - 1 do
-            local ax, ay, bx, by = b.xs[j], b.ys[j], b.xs[j + 1], b.ys[j + 1]
-            local dx, dy = bx - ax, by - ay
-            local l2 = dx * dx + dy * dy
-            local t = l2 > 0 and ((x - ax) * dx + (y - ay) * dy) / l2 or 0
-            if t < 0 then t = 0 elseif t > 1 then t = 1 end
-            -- on it means close to it and going the same way (a route crossing under a bridge keeps the ground)
-            if sqrt((x - ax - dx * t) ^ 2 + (y - ay - dy * t) ^ 2) <= b.half + 2 / r.mpu and l2 > 0 then
-              local fx, fy = R:dir(R.S[k])
-              local c = (fx * dx - fy * dy) / sqrt(l2)          -- cell y runs south, route y north
-              if c > 0.9 or c < -0.9 then on_brunnel = b.kind; break end
-            end
-          end
-          if on_brunnel then break end
-        end
-        -- on a bridge or in a tunnel (built with the bridge models later), or over water: no ground height here
-        if z and not on_brunnel and not cell.WATER[s] then R.Z[k] = z; R.surf[k] = s
-        else
-          R.surf[k] = on_brunnel or (s and "bridge") or nil
-        end
-      end
+    if ok and r then fill_route(self, cx, cy, r, g)
     else
       failed = failed + 1
       self.log(string.format("FAILED: route cell %d/%d: %s", cx, cy, tostring(ok and "no map data" or r)))

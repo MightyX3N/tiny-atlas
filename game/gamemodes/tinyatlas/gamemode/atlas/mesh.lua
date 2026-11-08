@@ -52,6 +52,7 @@ function M.build(r, g, opts)
   -- smooth normals of the land surface (area weighted), for shading
   local nx, ny, nz = {}, {}, {}
   for t = 1, nt do
+    if t % 256 == 0 then tick() end
     if not WATER[surf[t]] then
       local o = 3 * t - 3
       local a, b, c = V[o + 1], V[o + 2], V[o + 3]

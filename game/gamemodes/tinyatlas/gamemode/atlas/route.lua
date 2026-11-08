@@ -28,7 +28,7 @@ function M.parse_gpx(text)
 end
 
 function M.new(points, world)
-  local R = setmetatable({ world = world, S = {}, X = {}, Y = {}, GX = {}, GY = {}, Z = {}, GZ = {}, surf = {}, n = 0,
+  local R = setmetatable({ world = world, S = {}, X = {}, Y = {}, GX = {}, GY = {}, Z = {}, ZR = {}, known = {}, surf = {}, n = 0,
     wind_along = 0, s = 0 }, { __index = M })
   -- metres along the track, then resample every STEP metres
   local gx, gy, xs, ys, ds = {}, {}, {}, {}, {}
@@ -71,24 +71,33 @@ end
 
 -- after heights: points without ground (over water where the bridge is not built yet, or missing data) take a
 -- straight line between the nearest points that have ground; then grades over +-6 m. Returns a summary.
+-- Called again whenever more of the route gets heights (ZR = ground height, known = its cell is built).
 function M:finish_heights()
-  local Z, n = self.Z, self.n
+  local ZR, n, known = self.ZR, self.n, self.known
+  local Z = {}
   local gaps, gap_m, longest = 0, 0, 0
   local k = 1
   while k <= n do
-    if Z[k] == nil then
+    if ZR[k] == nil then
       local k0 = k
-      while k <= n and Z[k] == nil do k = k + 1 end
-      local a, b = Z[k0 - 1], Z[k]
+      local built = true
+      while k <= n and ZR[k] == nil do
+        if not known[k] then built = false end
+        k = k + 1
+      end
+      local a, b = ZR[k0 - 1], ZR[k]
       local len = (k - k0) * M.STEP
-      gaps = gaps + 1; gap_m = gap_m + len
-      if len > longest then longest = len end
+      if built then
+        gaps = gaps + 1; gap_m = gap_m + len
+        if len > longest then longest = len end
+      end
       for i = k0, k - 1 do
         if a and b then Z[i] = a + (b - a) * (i - k0 + 1) / (k - k0 + 1)
-        else Z[i] = a or b or 0 end
+        else Z[i] = a or b or 0 end                      -- not built yet: level with the last known height
       end
-    else k = k + 1 end
+    else Z[k] = ZR[k]; k = k + 1 end
   end
+  self.Z = Z
   -- grade in %, from the heights 6 m behind and ahead
   local G = {}
   local w = max(1, floor(6 / M.STEP + 0.5))

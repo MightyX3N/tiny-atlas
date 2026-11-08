@@ -67,7 +67,9 @@ local function run_jobs()
     job.slice_end = frame_end
     local t0 = SysTime()
     job.slice_start = t0
+    job.running = true
     local ok, err = coroutine.resume(job.co)
+    job.running = false
     job.cpu = job.cpu + (SysTime() - t0)
     job.slices = job.slices + 1
     if not ok then
