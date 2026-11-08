@@ -52,6 +52,9 @@ its 64 cells the way the game will, and writes a report to `data/tinyatlas/perf/
 cell, wall time, triangles, problems, and the riding speed the builder keeps up with at the current frame rate.
 The gate for milestone 1: every cell under 1000 ms CPU, keeps up with 40 km/h, no problems.
 
+**Measured in the real game (2026-11-08), central Amsterdam, full tile:** 61 ms CPU per cell on average, 84 ms
+worst, no problems in 64 cells, 163k triangles; at 4 ms per frame it keeps up with about 470 km/h. **PASS.**
+
 ## Tests
 
 ```
