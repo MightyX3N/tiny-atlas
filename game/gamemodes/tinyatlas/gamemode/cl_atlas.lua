@@ -46,8 +46,13 @@ TinyAtlasFetch = F
 local budget = CreateClientConVar("ta_atlas_budget_ms", "4", true, false, "Milliseconds per frame the new world builder may use")
 local jobs = {}
 
+local last_frame = -1
 local function run_jobs()
   if #jobs == 0 then return end
+  -- run at most once per rendered frame, from whichever hook comes first
+  local fn = FrameNumber and FrameNumber() or SysTime()
+  if fn == last_frame then return end
+  last_frame = fn
   local frame_end = SysTime() + budget:GetFloat() / 1000
   while #jobs > 0 and SysTime() < frame_end do
     local job = jobs[1]
@@ -65,7 +70,17 @@ local function run_jobs()
     end
   end
 end
+-- Think stops while single player is paused (console or menu open); PostRender keeps going while frames are drawn
 hook.Add("Think", "TinyAtlasBuildJobs", run_jobs)
+hook.Add("PostRender", "TinyAtlasBuildJobs", run_jobs)
+
+concommand.Add("ta_atlas_status", function()
+  print(string.format("[Tiny Atlas] %d build job(s) waiting", #jobs))
+  for i, job in ipairs(jobs) do
+    print(string.format("  job %d: %s, %d slices, %.0f ms CPU, %s", i, coroutine.status(job.co), job.slices,
+      job.cpu * 1000, job.where or "not started"))
+  end
+end)
 
 local function add_job(fn)
   local job = { cpu = 0, slices = 0 }
@@ -99,7 +114,10 @@ concommand.Add("ta_buildbench", function(_, _, args)
   local dl0 = F.stats.downloads
   F:get("omt", 14, tx, ty, function(bytes)
     local t_got = SysTime()
+    print(string.format("[Tiny Atlas] tile ready (%d bytes, %s); building...", #bytes,
+      F.stats.downloads > dl0 and "downloaded" or "from cache"))
     add_job(function(job)
+      job.where = "decoding the tile"
       local wall0 = SysTime()
       local d0 = job.cpu_now()
       local layers = mvt.decode(bytes)
@@ -111,6 +129,7 @@ concommand.Add("ta_buildbench", function(_, _, args)
       for cy = 0, 7 do for cx = 0, 7 do order[#order + 1] = { cx, cy } end end
       for k = 1, ncell do
         local cx, cy = order[k][1], order[k][2]
+        job.where = string.format("cell %d of %d", k, ncell)
         local c0 = job.cpu_now()
         local r = cell.build(layers, cx, cy, tlat, { tick = job.tick, clock = SysTime })
         local spent = job.cpu_now() - c0
@@ -121,7 +140,11 @@ concommand.Add("ta_buildbench", function(_, _, args)
           print(string.format("[Tiny Atlas]   cell %d,%d: %s", cx, cy, table.concat(r.problems, "; ")))
         end
         if spent * 1000 > worst.ms then worst = { ms = spent * 1000, cx = cx, cy = cy, st = r.stats } end
+        if k % 16 == 0 then
+          print(string.format("[Tiny Atlas]   %d/%d cells, %.0f ms CPU so far", k, ncell, job.cpu_now() * 1000))
+        end
       end
+      job.where = "writing the report"
       local wall = SysTime() - wall0
       table.sort(per)
       local sum = 0 for _, v in ipairs(per) do sum = sum + v end

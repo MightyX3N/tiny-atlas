@@ -25,13 +25,14 @@ local oldprint = print
 print = function(...) local t = {} for i, v in ipairs({ ... }) do t[i] = tostring(v) end printed[#printed + 1] = table.concat(t, " ") end
 
 include("cl_atlas.lua")
-local function run(label)
+local function run(label, paused)
   printed = {}
   F.run("ta_buildbench", tostring(lat), tostring(lon))
   local frames = 0
   repeat
     frames = frames + 1
-    F.tick(1 / 60); F.run_simple()
+    if paused then F.t = F.t + 1 / 60; hook.Run("PostRender") else F.tick(1 / 60) end   -- paused: no Think
+    F.run_simple()
   until frames > 200000 or (printed[#printed] or ""):match("report written")
   oldprint("--- " .. label .. " (" .. frames .. " frames)")
   for _, l in ipairs(printed) do oldprint(l) end
@@ -39,7 +40,7 @@ local function run(label)
 end
 run("first run: downloads")
 assert(#requests == 2, "expected the TileJSON and one tile, got " .. #requests)
-run("second run: cache")
+run("second run: cache, game paused (only PostRender runs)", true)
 assert(#requests == 2, "second run should not download")
 assert(#F.errors == 0, "errors: " .. table.concat(F.errors, "; "))
 oldprint("OK: requests " .. #requests .. ", errors 0")
