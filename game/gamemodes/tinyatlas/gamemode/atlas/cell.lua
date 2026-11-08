@@ -616,6 +616,50 @@ function M.build(layers, cx, cy, lat, opts)
     end
   end
   stats.regions = nreg
+  -- slivers: a thin strip of land left between two roads that almost meet (lines in the map data that end a little
+  -- short, or two carriageways drawn close together) becomes road. Thin = area / boundary length under 0.7 m,
+  -- and at least 60 % of its boundary is road.
+  do
+    local area, perim, roadb, best = {}, {}, {}, {}
+    for t = 1, T.nt do
+      local r = region[t]
+      local o = 3 * t - 3
+      local a, b, c = V[o + 1], V[o + 2], V[o + 3]
+      area[r] = (area[r] or 0) + orient(X[a], Y[a], X[b], Y[b], X[c], Y[c]) / 2
+      for i = 1, 3 do
+        local u = N[o + i]
+        if u and region[u] ~= r then
+          local p, q = V[o + i], V[o + (i % 3) + 1]
+          local len = math.sqrt((X[p] - X[q]) ^ 2 + (Y[p] - Y[q]) ^ 2)
+          perim[r] = (perim[r] or 0) + len
+          local su = surf[u]
+          if M.ROADLIKE[su] and su ~= "rail" then
+            roadb[r] = (roadb[r] or 0) + len
+            local B = best[r]; if not B then B = {}; best[r] = B end
+            B[su] = (B[su] or 0) + len
+          end
+        elseif not u then
+          perim[r] = (perim[r] or 0) + math.sqrt((X[V[o + i]] - X[V[o + (i % 3) + 1]]) ^ 2 + (Y[V[o + i]] - Y[V[o + (i % 3) + 1]]) ^ 2)
+        end
+      end
+    end
+    local thin = (os and os.getenv and os.getenv("NO_SLIVERS")) and -1 or 0.7 / mpu
+    local new = {}
+    for r = 1, nreg do
+      local p = perim[r] or 0
+      if p > 0 and (roadb[r] or 0) >= 0.6 * p and area[r] / p < thin then
+        local bs, bl = nil, 0
+        for su, l in pairs(best[r]) do if l > bl then bs, bl = su, l end end
+        new[r] = bs
+      end
+    end
+    local changed = 0
+    for t = 1, T.nt do
+      local s2 = new[region[t]]
+      if s2 and not M.ROADLIKE[surf[t]] and surf[t] ~= "building" and not M.WATER[surf[t]] then surf[t] = s2; changed = changed + 1 end
+    end
+    stats.slivers = changed
+  end
   local t5 = clock(); stats.ms_label = (t5 - t4) * 1000
 
   -- drop constraints between equal surfaces (keep the cell border) and restore Delaunay
