@@ -171,3 +171,50 @@ concommand.Add("ta_buildbench", function(_, _, args)
     print("[Tiny Atlas] FAILED: could not get the map tile: " .. tostring(e))
   end)
 end)
+
+-- ---- ta_fetch_testdata: download the map and height tiles of the test areas into the cache (one-time) ----
+local TEST_AREAS = {
+  { "Amsterdam (city run, canal ring)", 52.345, 52.385, 4.86, 4.93 },
+  { "Copenhagen (lakes, harbour)", 55.655, 55.705, 12.53, 12.62 },
+  { "Alpe d'Huez", 45.045, 45.100, 6.015, 6.085 },
+  { "Rold Skov (countryside, forest)", 56.77, 56.84, 9.78, 9.90 },
+}
+concommand.Add("ta_fetch_testdata", function()
+  local queue = {}
+  for _, a in ipairs(TEST_AREAS) do
+    local x0, y1 = fetch.tile_of(a[2], a[4], 14)
+    local x1, y0 = fetch.tile_of(a[3], a[5], 14)
+    for x = x0, x1 do for y = y0, y1 do
+      queue[#queue + 1] = { "omt", x, y }
+      queue[#queue + 1] = { "terrarium", x, y }
+    end end
+  end
+  local total, done, failed, running, nexti = #queue, 0, 0, 0, 1
+  local bytes0 = F.stats.bytes
+  local t0, last_note = SysTime(), SysTime()
+  print(string.format("[Tiny Atlas] fetching %d tiles for %d test areas...", total, #TEST_AREAS))
+  local function pump()
+    while running < 4 and nexti <= total do
+      local q = queue[nexti]; nexti = nexti + 1
+      running = running + 1
+      F:get(q[1], 14, q[2], q[3], function()
+        running = running - 1; done = done + 1
+        if SysTime() - last_note > 3 then
+          last_note = SysTime()
+          print(string.format("[Tiny Atlas]   %d/%d tiles (%.1f MB downloaded)", done + failed, total, (F.stats.bytes - bytes0) / 1e6))
+        end
+        if done + failed == total then
+          print(string.format("[Tiny Atlas] test data: %d tiles ready, %d failed, %.1f MB in %.0f s%s", done, failed,
+            (F.stats.bytes - bytes0) / 1e6, SysTime() - t0, failed > 0 and "  FAILED for some tiles (see above)" or ""))
+        else pump() end
+      end, function(e)
+        running = running - 1; failed = failed + 1
+        print("[Tiny Atlas]   FAILED: " .. tostring(e))
+        if done + failed == total then
+          print(string.format("[Tiny Atlas] test data: %d tiles ready, %d failed", done, failed))
+        else pump() end
+      end)
+    end
+  end
+  pump()
+end)
