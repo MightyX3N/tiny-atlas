@@ -1,7 +1,7 @@
 -- Builds the world's geometry as quad buffers (4 vertices per quad: x y z u v r g b each, local metres).
 -- Engine-agnostic: GMod turns buffers into IMeshes, LÖVE into love.graphics meshes.
 local M = {}
-local floor, max, min, sqrt, cos, sin, pi = math.floor, math.max, math.min, math.sqrt, math.cos, math.sin, math.pi
+local floor, max, min, sqrt, cos, sin, pi, huge = math.floor, math.max, math.min, math.sqrt, math.cos, math.sin, math.pi, math.huge
 
 -- light: direction towards the sun, ambient + diffuse
 local LX, LY, LZ = 0.38, -0.42, 0.82
@@ -186,7 +186,15 @@ local function water_z(C, x, y)
   fx, fy = fx - i, fy - j
   local a, b2 = W[j * wn + i], W[j * wn + i + 1]
   local c, d = W[(j + 1) * wn + i], W[(j + 1) * wn + i + 1]
-  local m = min(a, b2, c, d)
+  -- the lowest level among the 4x4 points around: a canal narrower than the 8 m grid can have all four
+  -- corner points on land, and those hold the street height
+  local m = huge
+  for jj = max(j - 1, 0), min(j + 2, wn - 1) do
+    for ii = max(i - 1, 0), min(i + 2, wn - 1) do
+      local v = W[jj * wn + ii]
+      if v < m then m = v end
+    end
+  end
   local lim = m + 0.35
   local wa = (a <= lim) and (1 - fx) * (1 - fy) or 0
   local wb = (b2 <= lim) and fx * (1 - fy) or 0
