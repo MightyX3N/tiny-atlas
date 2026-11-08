@@ -28,7 +28,7 @@ function M.parse_gpx(text)
 end
 
 function M.new(points, world)
-  local R = setmetatable({ world = world, S = {}, X = {}, Y = {}, GX = {}, GY = {}, Z = {}, surf = {}, n = 0,
+  local R = setmetatable({ world = world, S = {}, X = {}, Y = {}, GX = {}, GY = {}, Z = {}, GZ = {}, surf = {}, n = 0,
     wind_along = 0, s = 0 }, { __index = M })
   -- metres along the track, then resample every STEP metres
   local gx, gy, xs, ys, ds = {}, {}, {}, {}, {}

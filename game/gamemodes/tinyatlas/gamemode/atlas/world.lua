@@ -327,7 +327,9 @@ function M:prepare_route(R, tick, progress)
         end
         -- on a bridge or in a tunnel (built with the bridge models later), or over water: no ground height here
         if z and not on_brunnel and not cell.WATER[s] then R.Z[k] = z; R.surf[k] = s
-        else R.surf[k] = on_brunnel or (s and "bridge") or nil end
+        else
+          R.surf[k] = on_brunnel or (s and "bridge") or nil
+        end
       end
     else
       failed = failed + 1

@@ -205,6 +205,14 @@ local function camera(x, y, z, fx, fy, back)
     local cs = back and V.s + 5 or V.s - d
     cx, cy, gz = V.R:pos(cs)
     if cs < 0 or cs > V.R.length then cx, cy = x - fx * (back and -5 or d), y - fy * (back and -5 or d) end   -- start / end
+    -- in a sharp corner the route point behind is right beside the rider: step back along the heading instead
+    local want = back and 5 or d
+    local dx, dy = x - cx, y - cy
+    if math.sqrt(dx * dx + dy * dy) < want * 0.75 then
+      local k = back and -want or want
+      cx, cy = x - fx * k, y - fy * k
+      gz = V.W:height_at(cx, cy) or gz
+    end
   else
     local k = back and -5 or d
     cx, cy = x - fx * k, y - fy * k
