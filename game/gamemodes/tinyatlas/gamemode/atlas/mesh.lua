@@ -199,16 +199,16 @@ end
 -- roads and water smooth. One group per cell (tex = "flat"), so a cell is one or two draws.
 
 M.PALETTE = {
-  grass = { 146, 178, 92 }, park = { 132, 172, 86 }, cemetery = { 128, 162, 92 }, ground = { 160, 176, 98 },
-  farmland = { 196, 182, 112 }, wood = { 84, 128, 72 }, wetland = { 116, 150, 104 }, pitch = { 118, 170, 84 },
-  sand = { 226, 206, 150 }, rock = { 150, 142, 132 }, ice = { 236, 240, 246 },
-  residential = { 178, 170, 152 }, commercial = { 182, 172, 160 }, industrial = { 168, 164, 158 },
-  building = { 158, 124, 108 },
-  road = { 104, 100, 106 }, road_unpaved = { 176, 156, 120 }, cycleway = { 178, 102, 88 }, path = { 206, 190, 156 },
-  path_unpaved = { 188, 160, 112 }, track = { 180, 152, 108 }, rail = { 120, 104, 96 }, pier = { 170, 136, 100 },
-  paved = { 192, 186, 176 },
-  water = { 92, 156, 186 }, sea = { 80, 142, 180 }, stream = { 100, 162, 186 },
-  wall = { 150, 140, 128 },
+  grass = { 124, 176, 86 }, park = { 118, 172, 82 }, cemetery = { 112, 160, 84 }, ground = { 138, 176, 90 },
+  farmland = { 198, 186, 118 }, wood = { 92, 138, 72 }, wetland = { 112, 150, 96 }, pitch = { 108, 172, 80 },
+  sand = { 230, 212, 160 }, rock = { 160, 152, 140 }, ice = { 236, 240, 246 },
+  residential = { 146, 168, 112 }, commercial = { 182, 178, 168 }, industrial = { 170, 168, 162 },
+  building = { 176, 160, 146 },
+  road = { 112, 112, 120 }, road_unpaved = { 186, 164, 124 }, cycleway = { 188, 112, 96 }, path = { 214, 200, 170 },
+  path_unpaved = { 192, 166, 120 }, track = { 184, 158, 114 }, rail = { 126, 112, 104 }, pier = { 176, 140, 104 },
+  paved = { 196, 190, 180 },
+  water = { 88, 170, 210 }, sea = { 78, 156, 204 }, stream = { 96, 176, 210 },
+  wall = { 164, 156, 144 },
 }
 local SMOOTH = { road = true, road_unpaved = true, cycleway = true, path = true, path_unpaved = true, track = true,
   rail = true, pier = true, paved = true, building = true, residential = true, commercial = true, industrial = true,
@@ -227,11 +227,23 @@ local function light(base, ndl, ao, var)
 end
 
 -- small steady colour variation by world position (the same in every cell), so big fields are not one flat colour
-local function noise(x, y)
-  local ix, iy = floor(x / 9), floor(y / 9)
+local function hash(ix, iy)
   local h = (ix * 374761393 + iy * 668265263) % 2147483647
   h = (h * 1274126177) % 2147483647
-  return 0.96 + (h % 1000) / 1000 * 0.08
+  return (h % 1000) / 1000
+end
+-- smooth value noise: big soft patches (about 40 m) plus a little fine variation
+local function vnoise(x, y, s)
+  local fx, fy = x / s, y / s
+  local ix, iy = floor(fx), floor(fy)
+  local ax, ay = fx - ix, fy - iy
+  ax, ay = ax * ax * (3 - 2 * ax), ay * ay * (3 - 2 * ay)
+  local a, b = hash(ix, iy), hash(ix + 1, iy)
+  local c, d = hash(ix, iy + 1), hash(ix + 1, iy + 1)
+  return (a + (b - a) * ax) * (1 - ay) + (c + (d - c) * ax) * ay
+end
+local function noise(x, y)
+  return 0.9 + 0.14 * vnoise(x, y, 41) + 0.05 * vnoise(x + 1000, y, 11)
 end
 
 function M.build_flat(r, g, opts)
@@ -264,6 +276,24 @@ function M.build_flat(r, g, opts)
       nsum[c] = (nsum[c] or 0) + land[a] + land[b]; ncount[c] = (ncount[c] or 0) + 2
     end
   end
+  -- soft borders: open land takes the average colour of the land surfaces around each point (roads, paths,
+  -- buildings and water keep sharp edges)
+  local BLEND_NO = { road = true, road_unpaved = true, cycleway = true, path = true, path_unpaved = true, track = true,
+    rail = true, pier = true, building = true }
+  local br, bg, bb, bn = {}, {}, {}, {}
+  for t = 1, nt do
+    local s = surf[t]
+    if not WATER[s] and not BLEND_NO[s] then
+      local col = P[s] or P.ground
+      local o = 3 * t - 3
+      for i = 1, 3 do
+        local v = V[o + i]
+        br[v] = (br[v] or 0) + col[1]; bg[v] = (bg[v] or 0) + col[2]; bb[v] = (bb[v] or 0) + col[3]; bn[v] = (bn[v] or 0) + 1
+      end
+    end
+  end
+  local blend = {}
+  for v, n in pairs(bn) do blend[v] = { br[v] / n, bg[v] / n, bb[v] / n } end
   local vn, ao = {}, {}
   for v, x in pairs(nx) do
     local y, z = ny[v], nz[v]
@@ -305,7 +335,8 @@ function M.build_flat(r, g, opts)
         local x, y = X[v] * k, -Y[v] * k
         -- open land: mostly its own facet, a little smooth, so slopes show facets without long slivers standing out
         local ndl = smooth and vn[v] or (0.7 * fn[t] + 0.3 * vn[v])
-        vert(x, y, land[v], light(base, ndl, ao[v] or 1, noise(ox + x, oy + y)))
+        local col = (not BLEND_NO[s] and blend[v]) or base
+        vert(x, y, land[v], light(col, ndl, ao[v] or 1, noise(ox + x, oy + y)))
       end
     end
   end
