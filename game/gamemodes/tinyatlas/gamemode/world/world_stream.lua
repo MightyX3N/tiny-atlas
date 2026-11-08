@@ -46,18 +46,41 @@ function Stream.new(E, D, M, route, look, cfg)
     end
   end
   for k, c in pairs(self.near) do self.cells[k] = c end
-  -- bridge segments by 1 m block
+  -- bridges: each one becomes its own piece, built from the pack's parts (see build_bridge)
   self.bridges = {}
-  local B = self.cfg.block
-  for _, br in ipairs(rt.bridges or {}) do
+  local step = (look.bridge and look.bridge.tile or 1.5) / 2
+  for i, br in ipairs(rt.bridges or {}) do
     local p, pz = br.p, br.pz
-    for k = 1, #pz - 1 do
-      local x1, y1, x2, y2 = p[2 * k - 1], p[2 * k], p[2 * k + 1], p[2 * k + 2]
-      local key = floor((x1 + x2) / 2 / B) .. "," .. floor((y1 + y2) / 2 / B)
-      local l = self.bridges[key] or {}; self.bridges[key] = l
-      l[#l + 1] = { x1, y1, pz[k], x2, y2, pz[k + 1], br.w, br.tag }
+    local np = #pz
+    if np >= 2 then
+      -- the centreline at exactly `step` metres: parts repeat cleanly
+      local acc = { 0 }
+      for k = 2, np do
+        acc[k] = acc[k - 1] + sqrt((p[2 * k - 1] - p[2 * k - 3]) ^ 2 + (p[2 * k] - p[2 * k - 2]) ^ 2)
+      end
+      local L = acc[np]
+      if L > 1 then
+        local nsteps = max(2, floor(L / step + 0.5))
+        local X, Y, Z = {}, {}, {}
+        local seg = 1
+        for q = 0, nsteps do
+          local a2 = L * q / nsteps
+          while seg < np - 1 and acc[seg + 1] < a2 do seg = seg + 1 end
+          local f = (a2 - acc[seg]) / max(acc[seg + 1] - acc[seg], 1e-6)
+          X[q + 1] = p[2 * seg - 1] + (p[2 * seg + 1] - p[2 * seg - 1]) * f
+          Y[q + 1] = p[2 * seg] + (p[2 * seg + 2] - p[2 * seg]) * f
+          Z[q + 1] = pz[seg] + (pz[seg + 1] - pz[seg]) * f
+        end
+        local x0, y0, x1, y1 = huge, huge, -huge, -huge
+        for q = 1, #X do x0, y0, x1, y1 = min(x0, X[q]), min(y0, Y[q]), max(x1, X[q]), max(y1, Y[q]) end
+        self.bridges[i] = { X = X, Y = Y, Z = Z, w = br.w, tag = br.tag, length = L,
+          x0 = x0 - br.w, y0 = y0 - br.w, x1 = x1 + br.w, y1 = y1 + br.w,
+          cx = (x0 + x1) / 2, cy = (y0 + y1) / 2 }
+      end
     end
   end
+  self:match_bridges_to_track()
+  self:join_side_by_side_bridges()
   self.far = D:far()
   return self
 end
@@ -147,6 +170,15 @@ function Stream:desired(s, px, py, fx, fy)
           end
         end
       end
+    end
+  end
+  -- bridges
+  for i, br in pairs(self.bridges) do
+    local mx, my = br.cx - px, br.cy - py
+    local d = sqrt(mx * mx + my * my)
+    if d <= R4 and mx * fx + my * fy > -back - br.length then
+      want["r:" .. i] = { kind = "r", spec = "1", i = i, cx = floor(br.cx / CS), cy = floor(br.cy / CS),
+                          x = br.cx, y = br.cy, r = br.length / 2 + br.w }
     end
   end
   -- 16 m pages, holes where the 4 m level is
@@ -242,6 +274,7 @@ local function build_block(self, u)
   local bpc = floor(self.CS / B)
   local bi, bj = u.bx - u.cx * bpc, u.by - u.cy * bpc
   local ox, oy = C.x0 + bi * B, C.y0 + bj * B
+  self:cut_under_bridges(C)
   local g, w, o = M.buffer(), M.buffer(), M.buffer()
   M.ground_lod1(g, C, bi, bj, B, L.tagcells, L.fallback_cells, L.water_tag, L.wall_rect, L.wall_tint)
   M.water_lod1(w, C, bi, bj, B, L.water_tag, L.water_frames, L.water_sheet_px)
@@ -253,10 +286,6 @@ local function build_block(self, u)
     for _, t in ipairs(e.t) do
       tree_into(self, o, t, ox, oy, t[6], M.surface_at(C.H, C.n, C.n, t[1] - C.x0, t[2] - C.y0, 1))
     end
-  end
-  for _, sg in ipairs(self.bridges[u.bx .. "," .. u.by] or {}) do
-    local cl = L.tagcells_by_name[sg[8]] or L.fallback_cells
-    M.bridge_segment(g, o, sg[1] - ox, sg[2] - oy, sg[3], sg[4] - ox, sg[5] - oy, sg[6], sg[7], cl[1], L.objects.white, L.bridge_side)
   end
   return { { g, "ground" }, { w, "water" }, { o, "objects" } }, ox, oy
 end
@@ -376,7 +405,169 @@ local function build_far(self, u)
   return { { f, "flat" } }, F.x0 + qi0 * F.res, F.y0 + qj0 * F.res
 end
 
-local builders = { b = build_block, c = build_cell, q = build_cell, l = build_l16, f = build_far }
+-- where the track runs over a bridge, the deck is at the ride height (the rider stays on the deck)
+function Stream:match_bridges_to_track()
+  local R = self.route
+  for _, br in pairs(self.bridges) do
+    local cand = {}
+    for k = 1, R.n do
+      local x, y = R.X[k], R.Y[k]
+      if x > br.x0 - 10 and x < br.x1 + 10 and y > br.y0 - 10 and y < br.y1 + 10 then cand[#cand + 1] = k end
+    end
+    if #cand > 0 then
+      for q = 1, #br.X do
+        local px, py = br.X[q], br.Y[q]
+        local best, bz = huge, nil
+        for _, k in ipairs(cand) do
+          if k < R.n then
+            local ax, ay, bx, by = R.X[k], R.Y[k], R.X[k + 1], R.Y[k + 1]
+            local dx, dy = bx - ax, by - ay
+            local l2 = dx * dx + dy * dy
+            local t = l2 > 0 and max(0, min(1, ((px - ax) * dx + (py - ay) * dy) / l2)) or 0
+            local qx, qy = ax + dx * t, ay + dy * t
+            local d = (px - qx) ^ 2 + (py - qy) ^ 2
+            if d < best then best, bz = d, R.Z[k] + (R.Z[k + 1] - R.Z[k]) * t end
+          end
+        end
+        if bz and best < (br.w / 2) ^ 2 and math.abs(bz - br.Z[q]) < 0.8 then br.Z[q] = bz; br.on_track = true end
+      end
+    end
+  end
+end
+
+-- distance from a point to a bridge's centreline (and the deck height there)
+local function bridge_dist(br, px, py)
+  local best, bz = huge, nil
+  for q = 1, #br.X - 1 do
+    local ax, ay, bx, by = br.X[q], br.Y[q], br.X[q + 1], br.Y[q + 1]
+    local dx, dy = bx - ax, by - ay
+    local l2 = dx * dx + dy * dy
+    local t = l2 > 0 and max(0, min(1, ((px - ax) * dx + (py - ay) * dy) / l2)) or 0
+    local d = (px - ax - dx * t) ^ 2 + (py - ay - dy * t) ^ 2
+    if d < best then best, bz = d, br.Z[q] + (br.Z[q + 1] - br.Z[q]) * t end
+  end
+  return sqrt(best), bz
+end
+
+-- OpenStreetMap often maps one bridge as several side by side (carriageway, cycle lane, footpath). They are
+-- drawn as one: decks next to each other take the same height (the one the ride is on wins), and a side
+-- that touches another deck gets no parapet or side wall.
+function Stream:join_side_by_side_bridges()
+  local list = {}
+  for i, br in pairs(self.bridges) do list[#list + 1] = br; br.id = i end
+  local function near(a, b) return a.x1 > b.x0 and a.x0 < b.x1 and a.y1 > b.y0 and a.y0 < b.y1 end
+  for _, a in ipairs(list) do
+    a.open = { [-1] = {}, [1] = {} }
+    for q = 1, #a.X do
+      local k1, k2 = max(1, q - 1), min(#a.X, q + 1)
+      local dx, dy = a.X[k2] - a.X[k1], a.Y[k2] - a.Y[k1]
+      local l = max(sqrt(dx * dx + dy * dy), 1e-6)
+      local nx, ny = -dy / l, dx / l
+      for _, b in ipairs(list) do
+        if b ~= a and near(a, b) then
+          -- height: follow a deck the ride is on, or the wider one
+          local d, bz = bridge_dist(b, a.X[q], a.Y[q])
+          if bz and d < a.w / 2 + b.w / 2 + 0.6 and math.abs(bz - a.Z[q]) < 0.8 and
+             ((b.on_track and not a.on_track) or (b.on_track == a.on_track and b.w > a.w)) then
+            a.Z[q] = bz
+          end
+          -- a side within 1.5 m of another deck is open: the deck reaches over to it (closing the gap)
+          for sd = -1, 1, 2 do
+            for _, reach in ipairs({ 0.3, 0.8, 1.3, 1.8 }) do
+              local px, py = a.X[q] + nx * sd * (a.w / 2 + reach), a.Y[q] + ny * sd * (a.w / 2 + reach)
+              local d2 = bridge_dist(b, px, py)
+              if d2 < b.w / 2 then
+                local cur = a.open[sd][q]
+                if not cur or reach < cur then a.open[sd][q] = reach end
+                break
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+end
+
+-- the ground under a bridge is always opened to what it crosses (the builder raises streets over canals, so
+-- under a bridge the road would otherwise fill the canal): water cells inside the deck become water
+function Stream:cut_under_bridges(C)
+  if C.under then return C.under end
+  local U, tn = {}, C.tn
+  local cx0, cy0, cx1, cy1 = C.x0, C.y0, C.x0 + tn, C.y0 + tn
+  for _, br in pairs(self.bridges) do
+    if br.x1 > cx0 and br.x0 < cx1 and br.y1 > cy0 and br.y0 < cy1 then
+      local hw = br.w / 2 - 0.4
+      for q = 1, #br.X - 1 do
+        local ax, ay, bx, by = br.X[q], br.Y[q], br.X[q + 1], br.Y[q + 1]
+        local dx, dy = bx - ax, by - ay
+        local l2 = dx * dx + dy * dy
+        for j = max(0, floor(min(ay, by) - hw - C.y0)), min(tn - 1, floor(max(ay, by) + hw - C.y0)) do
+          for i = max(0, floor(min(ax, bx) - hw - C.x0)), min(tn - 1, floor(max(ax, bx) + hw - C.x0)) do
+            local px, py = C.x0 + i + 0.5, C.y0 + j + 0.5
+            local t = l2 > 0 and max(0, min(1, ((px - ax) * dx + (py - ay) * dy) / l2)) or 0
+            local qx, qy = ax + dx * t, ay + dy * t
+            if (px - qx) ^ 2 + (py - qy) ^ 2 <= hw * hw then U[j * tn + i] = true end
+          end
+        end
+      end
+    end
+  end
+  C.under = U
+  return U
+end
+
+-- a bridge: arched over water (springing at the water, crown just under the deck), else a flat slab
+local function build_bridge(self, u)
+  local br = self.bridges[u.i]
+  local M, L = self.M, self.look
+  local P = L.bridge
+  local X, Y, Z = br.X, br.Y, br.Z
+  local n = #X
+  local wz, wet = {}, {}
+  local zs = huge
+  for q = 1, n do
+    local cx, cy = floor(X[q] / self.CS), floor(Y[q] / self.CS)
+    local C = self.near[ckey(cx, cy)] and self.D:chunk(cx, cy)
+    if C and C.W then
+      local i, j = floor(X[q] - C.x0), floor(Y[q] - C.y0)
+      if i >= 0 and j >= 0 and i < C.tn and j < C.tn and C.T[j * C.tn + i] == L.water_tag then
+        wet[q] = true
+        wz[q] = M.water_z(C, X[q] - C.x0, Y[q] - C.y0)
+        if wz[q] < zs then zs = wz[q] end
+      end
+    end
+  end
+  local U = {}
+  local ka, kb
+  for q = 1, n do if wet[q] then ka = ka or q; kb = q end end
+  local arched = false
+  if ka then
+    ka, kb = max(1, ka - 2), min(n, kb + 2)
+    local zc = huge
+    for q = ka, kb do zc = min(zc, Z[q] - P.thick - 0.15) end
+    if zc - zs > 0.9 and kb > ka then
+      arched = true
+      for q = 1, n do
+        if q < ka or q > kb then U[q] = zs - 0.3
+        else
+          local t = (q - ka) / (kb - ka)
+          U[q] = zs - 0.3 + (zc - zs + 0.3) * sqrt(max(0, 1 - (2 * t - 1) ^ 2))
+        end
+      end
+    end
+  end
+  if not arched then for q = 1, n do U[q] = Z[q] - P.thick end end
+  local ox, oy = X[1], Y[1]
+  local lx, ly = {}, {}
+  for q = 1, n do lx[q], ly[q] = X[q] - ox, Y[q] - oy end
+  local g = M.buffer()
+  local deck = L.tagcells_by_name[br.tag] or L.tagcells_by_name.asphalt or L.fallback_cells
+  M.bridge_model(g, lx, ly, Z, U, br.w, deck, P, br.open)
+  return { { g, "ground" } }, ox, oy
+end
+
+local builders = { r = build_bridge, b = build_block, c = build_cell, q = build_cell, l = build_l16, f = build_far }
 
 -- ------------------------------------------------------------------ the frame loop ----
 -- update what is wanted (cheap; call a few times a second)
@@ -403,7 +594,7 @@ function Stream:plan(s, px, py, fx, fy)
   self:sort_queue()
 end
 
-local LEVEL = { b = 0, q = 0.4, c = 1, l = 2, f = 3 }
+local LEVEL = { r = -0.5, b = 0, q = 0.4, c = 1, l = 2, f = 3 }
 function Stream:sort_queue()
   local want, px, py = self.want, self.px or 0, self.py or 0
   local pr = {}

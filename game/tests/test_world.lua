@@ -44,7 +44,7 @@ check("loading screen shown while building", true)
 
 local S = W.S
 local function count()
-  local c = { b = 0, c = 0, q = 0, l = 0, f = 0 }
+  local c = { r = 0, b = 0, c = 0, q = 0, l = 0, f = 0 }
   local meshes, quads = 0, 0
   for _, u in pairs(S.units) do
     c[u.kind] = c[u.kind] + 1
@@ -54,9 +54,9 @@ local function count()
   return c, meshes, quads
 end
 local c, meshes, quads = count()
-print(string.format("  built: %d 1 m blocks, %d 4 m cells, %d 4 m pieces, %d 16 m pages, %d far tiles; %d meshes, %d quads",
+print(string.format("  built: %d bridges, %d 1 m blocks, %d 4 m cells, %d 4 m pieces, %d 16 m pages, %d far tiles; %d meshes, %d quads", c.r,
   c.b, c.c, c.q, c.l, c.f, meshes, quads))
-check("every level present", c.b > 0 and (c.c + c.q) > 0 and c.l > 0 and c.f > 0)
+check("every level present (and bridges)", c.r > 0 and c.b > 0 and (c.c + c.q) > 0 and c.l > 0 and c.f > 0)
 check("live meshes = meshes the units hold (no leaks)", F.meshes_alive == meshes, F.meshes_alive .. " vs " .. meshes)
 check("largest mesh under 65,535 vertices", F.mesh_stats.max_verts <= 65535, tostring(F.mesh_stats.max_verts))
 

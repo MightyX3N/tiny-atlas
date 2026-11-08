@@ -56,6 +56,12 @@ function Look.build(pack, atlas, rt, season)
   L.wall_rect = L.wall_rect or (cells_by_name.cobble and cells_by_name.cobble[1]) or fallback[1]
   L.wall_tint = wall.tint or { 0.9, 0.88, 0.85 }
   L.bridge_side = hex(pack.bridge and pack.bridge.side, { 185, 168, 143 })
+  -- bridge parts (ground atlas cells); packs without them get plain cobble
+  local PB, AB = pack.bridge or {}, atlas.bridge or {}
+  local plain = cells_by_name.cobble and cells_by_name.cobble[1] or fallback[1]
+  L.bridge = { wall = AB.wall or plain, stone = AB.stone or AB.wall or plain, parapet = AB.parapet or AB.wall or plain,
+               arch = AB.arch or AB.wall or plain, tile = PB.tile_metres or 1.5, parapet_h = PB.parapet_height or 1.0,
+               thick = PB.deck_thickness or 0.7 }
   -- trees: per route tree kind
   local trees = {}
   for k, v in pairs(pack.trees or {}) do trees[k] = v end

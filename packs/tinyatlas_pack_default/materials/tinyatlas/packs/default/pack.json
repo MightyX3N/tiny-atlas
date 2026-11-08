@@ -1,12 +1,11 @@
 {
  "water": {
-  "texture": "water/still_0.png",
   "river": {
-   "ms": 90,
    "tile_metres": 11.2,
    "sheet": "water/river.png",
    "flows": "down",
-   "frames": 16
+   "frames": 16,
+   "ms": 90
   },
   "opacity": 0.86,
   "bed_tint": [
@@ -15,32 +14,27 @@
    0.62
   ],
   "still": {
-   "ms": 90,
    "sheet": "water/still.png",
    "tile_metres": 11.2,
-   "frames": 16
-  }
+   "frames": 16,
+   "ms": 90
+  },
+  "texture": "water/still_0.png"
  },
- "version": "1.0.0",
- "bikes": {
-  "mtb": {
-   "texture": "bikes/bike_basecolor.png"
-  }
- },
+ "id": "default",
  "name": "Default",
- "sky": {
-  "top": "#6fa6dc",
-  "horizon": "#c8dbe8",
-  "haze": "#c8dbe8",
-  "fog_near": 300,
-  "fog_far": 7000
+ "sun": {
+  "ground": "#6b6050",
+  "strength": 2.4,
+  "ambient": "#dfeeff",
+  "colour": "#fff1d6"
  },
  "ground_priority": {
   "forest_floor": 2,
   "water": 1,
   "dry_grass": 2,
   "asphalt": 6,
-  "paving": 5,
+  "meadow": 2,
   "cobble": 5,
   "gravel": 4,
   "sand": 3,
@@ -50,256 +44,293 @@
   "orchard": 2,
   "grass": 2,
   "rail": 6,
-  "parking": 6,
   "rural": 2,
   "scrub": 2,
-  "meadow": 2,
-  "farmland": 2
+  "parking": 6,
+  "farmland": 2,
+  "paving": 5
  },
  "seasons": {
-  "winter": {
-   "ground": {
-    "grass": [
-     "ground/grass_winter_1.png",
-     "ground/grass_winter_2.png",
-     "ground/grass_winter_3.png",
-     "ground/grass_winter_4.png"
-    ],
-    "forest_floor": [
-     "ground/forest_floor_winter_1.png",
-     "ground/forest_floor_winter_2.png",
-     "ground/forest_floor_winter_3.png",
-     "ground/forest_floor_winter_4.png"
-    ],
-    "rural": [
-     "ground/rural_winter_1.png",
-     "ground/rural_winter_2.png",
-     "ground/rural_winter_3.png",
-     "ground/rural_winter_4.png"
-    ],
-    "meadow": [
-     "ground/meadow_winter_1.png",
-     "ground/meadow_winter_2.png",
-     "ground/meadow_winter_3.png",
-     "ground/meadow_winter_4.png"
-    ],
-    "farmland": [
-     "ground/farmland_winter_1.png",
-     "ground/farmland_winter_2.png",
-     "ground/farmland_winter_3.png",
-     "ground/farmland_winter_4.png"
-    ]
+  "autumn": {
+   "trees": {
+    "shrub": {
+     "sprites": [
+      "props/bushes/orange_16.png",
+      "props/bushes/orange_17.png",
+      "props/bushes/orange_18.png",
+      "props/bushes/orange_19.png",
+      "props/bushes/yellow_20.png",
+      "props/bushes/yellow_21.png",
+      "props/bushes/yellow_22.png",
+      "props/bushes/yellow_23.png",
+      "props/bushes/amber_28.png",
+      "props/bushes/amber_29.png",
+      "props/bushes/amber_30.png",
+      "props/bushes/amber_31.png",
+      "props/bushes/red_32.png",
+      "props/bushes/red_33.png"
+     ]
+    },
+    "broadleaf": {
+     "sprites": [
+      "trees/autumn_1.png",
+      "trees/autumn_2.png",
+      "trees/autumn_3.png",
+      "trees/autumn_4.png",
+      "trees/autumn_5.png",
+      "trees/autumn_6.png",
+      "trees/autumn_7.png",
+      "trees/autumn_8.png",
+      "trees/autumn_9.png",
+      "trees/autumn_10.png",
+      "trees/autumn_11.png",
+      "trees/autumn_12.png",
+      "trees/autumn_13.png",
+      "trees/autumn_14.png"
+     ]
+    }
    },
    "props": {
-    "grass": [
-     {
-      "density": 0.4,
-      "sprites": [
-       "props/grass/frost_20_7.png",
-       "props/grass/frost_20_14.png",
-       "props/grass/frost_20_21.png",
-       "props/grass/frost_20_28.png",
-       "props/grass/frost_20_35.png",
-       "props/grass/frost_20_42.png",
-       "props/grass/frost_20_49.png",
-       "props/grass/frost_20_56.png",
-       "props/grass/frost_20_63.png",
-       "props/grass/frost_20_70.png",
-       "props/grass/frost_20_77.png"
-      ],
-      "size": 0.4
-     }
-    ],
     "forest_floor": [
      {
-      "density": 0.08,
       "sprites": [
-       "props/log_winter_0.png",
-       "props/log_winter_1.png",
-       "props/log_winter_2.png",
-       "props/log_winter_3.png"
+       "props/log_autumn_0.png",
+       "props/log_autumn_1.png",
+       "props/log_autumn_2.png",
+       "props/log_autumn_3.png"
       ],
+      "density": 0.08,
       "size": 1.2
      },
      {
-      "density": 0.3,
       "sprites": [
-       "props/bushes/frost_12.png",
-       "props/bushes/frost_13.png",
-       "props/bushes/frost_14.png",
-       "props/bushes/frost_15.png"
+       "props/stump_autumn_0.png",
+       "props/stump_autumn_1.png",
+       "props/stump_autumn_2.png",
+       "props/stump_autumn_3.png"
       ],
-      "size": 1.2
+      "density": 0.1,
+      "size": 0.8
+     },
+     {
+      "sprites": [
+       "props/bushes/orange_16.png",
+       "props/bushes/orange_17.png",
+       "props/bushes/orange_18.png",
+       "props/bushes/orange_19.png",
+       "props/bushes/yellow_20.png",
+       "props/bushes/yellow_21.png",
+       "props/bushes/yellow_22.png",
+       "props/bushes/yellow_23.png",
+       "props/bushes/amber_28.png",
+       "props/bushes/amber_29.png",
+       "props/bushes/amber_30.png",
+       "props/bushes/amber_31.png",
+       "props/bushes/red_32.png",
+       "props/bushes/red_33.png"
+      ],
+      "density": 0.35,
+      "size": 1.3
      }
     ],
     "dry_grass": [
      {
-      "density": 0.2,
       "sprites": [
-       "props/bushes/frost_12.png",
-       "props/bushes/frost_13.png",
-       "props/bushes/frost_14.png",
-       "props/bushes/frost_15.png"
+       "props/bushes/amber_28.png",
+       "props/bushes/amber_29.png",
+       "props/bushes/amber_30.png",
+       "props/bushes/amber_31.png",
+       "props/bushes/orange_16.png",
+       "props/bushes/orange_17.png",
+       "props/bushes/orange_18.png",
+       "props/bushes/orange_19.png"
       ],
-      "size": 1
+      "density": 0.25,
+      "size": 1.1
      },
      {
-      "density": 0.6,
       "sprites": [
-       "props/grass/frost_20_7.png",
-       "props/grass/frost_20_14.png",
-       "props/grass/frost_20_21.png",
-       "props/grass/frost_20_28.png",
-       "props/grass/frost_20_35.png",
-       "props/grass/frost_20_42.png",
-       "props/grass/frost_20_49.png",
-       "props/grass/frost_20_56.png",
-       "props/grass/frost_20_63.png",
-       "props/grass/frost_20_70.png",
-       "props/grass/frost_20_77.png"
+       "props/grass/yellow_21_0.png",
+       "props/grass/yellow_21_7.png",
+       "props/grass/yellow_21_14.png",
+       "props/grass/yellow_21_21.png",
+       "props/grass/yellow_21_28.png",
+       "props/grass/yellow_21_35.png",
+       "props/grass/yellow_21_42.png",
+       "props/grass/yellow_21_49.png",
+       "props/grass/yellow_21_56.png",
+       "props/grass/yellow_21_63.png",
+       "props/grass/yellow_21_70.png",
+       "props/grass/yellow_21_77.png",
+       "props/grass/yellow_23_0.png",
+       "props/grass/yellow_23_7.png",
+       "props/grass/yellow_23_14.png",
+       "props/grass/yellow_23_21.png",
+       "props/grass/yellow_23_28.png",
+       "props/grass/yellow_23_35.png",
+       "props/grass/yellow_23_42.png",
+       "props/grass/yellow_23_49.png",
+       "props/grass/yellow_23_56.png",
+       "props/grass/yellow_23_63.png",
+       "props/grass/yellow_23_70.png",
+       "props/grass/yellow_23_77.png",
+       "props/grass/red_16_0.png",
+       "props/grass/red_16_7.png",
+       "props/grass/red_16_14.png",
+       "props/grass/red_16_21.png",
+       "props/grass/red_16_28.png",
+       "props/grass/red_16_35.png",
+       "props/grass/red_16_42.png",
+       "props/grass/red_16_49.png",
+       "props/grass/red_16_56.png",
+       "props/grass/red_16_63.png",
+       "props/grass/red_16_70.png",
+       "props/grass/red_16_77.png",
+       "props/grass/red_17_0.png",
+       "props/grass/red_17_7.png",
+       "props/grass/red_17_14.png",
+       "props/grass/red_17_21.png",
+       "props/grass/red_17_28.png",
+       "props/grass/red_17_35.png",
+       "props/grass/red_17_42.png",
+       "props/grass/red_17_49.png",
+       "props/grass/red_17_56.png",
+       "props/grass/red_17_63.png",
+       "props/grass/red_17_70.png",
+       "props/grass/red_17_77.png"
       ],
-      "size": 0.45
-     }
-    ],
-    "rural": [
-     {
-      "density": 0.3,
-      "sprites": [
-       "props/grass/frost_20_7.png",
-       "props/grass/frost_20_14.png",
-       "props/grass/frost_20_21.png",
-       "props/grass/frost_20_28.png",
-       "props/grass/frost_20_35.png",
-       "props/grass/frost_20_42.png",
-       "props/grass/frost_20_49.png",
-       "props/grass/frost_20_56.png",
-       "props/grass/frost_20_63.png",
-       "props/grass/frost_20_70.png",
-       "props/grass/frost_20_77.png"
-      ],
-      "size": 0.45
+      "density": 1,
+      "size": 0.5
      }
     ],
     "scrub": [
      {
-      "density": 0.8,
       "sprites": [
-       "props/bushes/frost_12.png",
-       "props/bushes/frost_13.png",
-       "props/bushes/frost_14.png",
-       "props/bushes/frost_15.png"
+       "props/bushes/orange_16.png",
+       "props/bushes/orange_17.png",
+       "props/bushes/orange_18.png",
+       "props/bushes/orange_19.png",
+       "props/bushes/yellow_20.png",
+       "props/bushes/yellow_21.png",
+       "props/bushes/yellow_22.png",
+       "props/bushes/yellow_23.png",
+       "props/bushes/amber_28.png",
+       "props/bushes/amber_29.png",
+       "props/bushes/amber_30.png",
+       "props/bushes/amber_31.png",
+       "props/bushes/red_32.png",
+       "props/bushes/red_33.png"
       ],
-      "size": 1.3
+      "density": 0.8,
+      "size": 1.4
      }
     ],
     "meadow": [
      {
-      "density": 0.8,
       "sprites": [
-       "props/grass/frost_20_7.png",
-       "props/grass/frost_20_14.png",
-       "props/grass/frost_20_21.png",
-       "props/grass/frost_20_28.png",
-       "props/grass/frost_20_35.png",
-       "props/grass/frost_20_42.png",
-       "props/grass/frost_20_49.png",
-       "props/grass/frost_20_56.png",
-       "props/grass/frost_20_63.png",
-       "props/grass/frost_20_70.png",
-       "props/grass/frost_20_77.png"
+       "props/grass/yellow_21_0.png",
+       "props/grass/yellow_21_7.png",
+       "props/grass/yellow_21_14.png",
+       "props/grass/yellow_21_21.png",
+       "props/grass/yellow_21_28.png",
+       "props/grass/yellow_21_35.png",
+       "props/grass/yellow_21_42.png",
+       "props/grass/yellow_21_49.png",
+       "props/grass/yellow_21_56.png",
+       "props/grass/yellow_21_63.png",
+       "props/grass/yellow_21_70.png",
+       "props/grass/yellow_21_77.png",
+       "props/grass/yellow_23_0.png",
+       "props/grass/yellow_23_7.png",
+       "props/grass/yellow_23_14.png",
+       "props/grass/yellow_23_21.png",
+       "props/grass/yellow_23_28.png",
+       "props/grass/yellow_23_35.png",
+       "props/grass/yellow_23_42.png",
+       "props/grass/yellow_23_49.png",
+       "props/grass/yellow_23_56.png",
+       "props/grass/yellow_23_63.png",
+       "props/grass/yellow_23_70.png",
+       "props/grass/yellow_23_77.png",
+       "props/grass/green_7_0.png",
+       "props/grass/green_7_7.png",
+       "props/grass/green_7_14.png",
+       "props/grass/green_7_21.png",
+       "props/grass/green_7_28.png",
+       "props/grass/green_7_35.png",
+       "props/grass/green_7_42.png",
+       "props/grass/green_7_49.png",
+       "props/grass/green_7_56.png",
+       "props/grass/green_7_63.png",
+       "props/grass/green_7_70.png",
+       "props/grass/green_7_77.png",
+       "props/grass/green_8_0.png",
+       "props/grass/green_8_7.png",
+       "props/grass/green_8_14.png",
+       "props/grass/green_8_21.png",
+       "props/grass/green_8_28.png",
+       "props/grass/green_8_35.png",
+       "props/grass/green_8_42.png",
+       "props/grass/green_8_49.png",
+       "props/grass/green_8_56.png",
+       "props/grass/green_8_63.png",
+       "props/grass/green_8_70.png",
+       "props/grass/green_8_77.png",
+       "props/grass/green_10_0.png",
+       "props/grass/green_10_7.png",
+       "props/grass/green_10_14.png",
+       "props/grass/green_10_21.png",
+       "props/grass/green_10_28.png",
+       "props/grass/green_10_35.png",
+       "props/grass/green_10_42.png",
+       "props/grass/green_10_49.png",
+       "props/grass/green_10_56.png",
+       "props/grass/green_10_63.png",
+       "props/grass/green_10_70.png",
+       "props/grass/green_10_77.png",
+       "props/grass/green_3_0.png",
+       "props/grass/green_3_7.png",
+       "props/grass/green_3_14.png",
+       "props/grass/green_3_21.png",
+       "props/grass/green_3_28.png",
+       "props/grass/green_3_35.png",
+       "props/grass/green_3_42.png",
+       "props/grass/green_3_49.png",
+       "props/grass/green_3_56.png",
+       "props/grass/green_3_63.png",
+       "props/grass/green_3_70.png",
+       "props/grass/green_3_77.png",
+       "props/grass/red_16_0.png",
+       "props/grass/red_16_7.png",
+       "props/grass/red_16_14.png",
+       "props/grass/red_16_21.png",
+       "props/grass/red_16_28.png",
+       "props/grass/red_16_35.png",
+       "props/grass/red_16_42.png",
+       "props/grass/red_16_49.png",
+       "props/grass/red_16_56.png",
+       "props/grass/red_16_63.png",
+       "props/grass/red_16_70.png",
+       "props/grass/red_16_77.png",
+       "props/grass/red_17_0.png",
+       "props/grass/red_17_7.png",
+       "props/grass/red_17_14.png",
+       "props/grass/red_17_21.png",
+       "props/grass/red_17_28.png",
+       "props/grass/red_17_35.png",
+       "props/grass/red_17_42.png",
+       "props/grass/red_17_49.png",
+       "props/grass/red_17_56.png",
+       "props/grass/red_17_63.png",
+       "props/grass/red_17_70.png",
+       "props/grass/red_17_77.png"
       ],
-      "size": 0.45
+      "density": 1.4,
+      "size": 0.55
      }
     ],
-    "rock": [
-     {
-      "density": 0.25,
-      "sprites": [
-       "props/rocks/snowy_20.png",
-       "props/rocks/snowy_21.png",
-       "props/rocks/snowy_22.png",
-       "props/rocks/snowy_23.png",
-       "props/rocks/snowy_24.png",
-       "props/rocks/snowy_25.png",
-       "props/rocks/snowy_26.png",
-       "props/rocks/snowy_27.png",
-       "props/rocks/snowy_28.png",
-       "props/rocks/snowy_29.png",
-       "props/rocks/snowy_30.png",
-       "props/rocks/snowy_32.png",
-       "props/rocks/snowy_36.png",
-       "props/rocks/snowy_38.png",
-       "props/rocks/snowy_39.png",
-       "props/rocks/snowy_40.png",
-       "props/rocks/snowy_41.png",
-       "props/rocks/snowy_42.png",
-       "props/rocks/snowy_43.png",
-       "props/rocks/snowy_47.png",
-       "props/rocks/snowy_48.png",
-       "props/rocks/snowy_49.png"
-      ],
-      "size": 2.4
-     },
-     {
-      "density": 0.35,
-      "sprites": [
-       "props/rocks/snowy_10.png",
-       "props/rocks/snowy_11.png",
-       "props/rocks/snowy_12.png",
-       "props/rocks/snowy_13.png",
-       "props/rocks/snowy_14.png",
-       "props/rocks/snowy_15.png",
-       "props/rocks/snowy_16.png",
-       "props/rocks/snowy_17.png",
-       "props/rocks/snowy_18.png",
-       "props/rocks/snowy_19.png"
-      ],
-      "size": 1.2
-     },
-     {
-      "density": 0.6,
-      "sprites": [
-       "props/rocks/snowy_0.png",
-       "props/rocks/snowy_1.png",
-       "props/rocks/snowy_2.png",
-       "props/rocks/snowy_3.png",
-       "props/rocks/snowy_4.png",
-       "props/rocks/snowy_5.png",
-       "props/rocks/snowy_6.png",
-       "props/rocks/snowy_7.png",
-       "props/rocks/snowy_8.png",
-       "props/rocks/snowy_9.png"
-      ],
-      "size": 0.6
-     }
-    ]
-   },
-   "trees": {
-    "broadleaf": {
-     "sprites": [
-      "trees/bare_1.png",
-      "trees/bare_2.png",
-      "trees/bare_3.png",
-      "trees/bare_4.png",
-      "trees/bare_5.png",
-      "trees/bare_6.png"
-     ]
-    },
-    "shrub": {
-     "sprites": [
-      "props/bushes/frost_12.png",
-      "props/bushes/frost_13.png",
-      "props/bushes/frost_14.png",
-      "props/bushes/frost_15.png"
-     ]
-    }
-   }
-  },
-  "autumn": {
-   "props": {
     "grass": [
      {
-      "density": 0.8,
       "sprites": [
        "props/grass/green_7_0.png",
        "props/grass/green_7_7.png",
@@ -374,313 +405,287 @@
        "props/grass/yellow_23_70.png",
        "props/grass/yellow_23_77.png"
       ],
+      "density": 0.8,
       "size": 0.45
      }
+    ]
+   }
+  },
+  "winter": {
+   "ground": {
+    "forest_floor": [
+     "ground/forest_floor_winter_1.png",
+     "ground/forest_floor_winter_2.png",
+     "ground/forest_floor_winter_3.png",
+     "ground/forest_floor_winter_4.png"
     ],
+    "rural": [
+     "ground/rural_winter_1.png",
+     "ground/rural_winter_2.png",
+     "ground/rural_winter_3.png",
+     "ground/rural_winter_4.png"
+    ],
+    "meadow": [
+     "ground/meadow_winter_1.png",
+     "ground/meadow_winter_2.png",
+     "ground/meadow_winter_3.png",
+     "ground/meadow_winter_4.png"
+    ],
+    "farmland": [
+     "ground/farmland_winter_1.png",
+     "ground/farmland_winter_2.png",
+     "ground/farmland_winter_3.png",
+     "ground/farmland_winter_4.png"
+    ],
+    "grass": [
+     "ground/grass_winter_1.png",
+     "ground/grass_winter_2.png",
+     "ground/grass_winter_3.png",
+     "ground/grass_winter_4.png"
+    ]
+   },
+   "trees": {
+    "shrub": {
+     "sprites": [
+      "props/bushes/frost_12.png",
+      "props/bushes/frost_13.png",
+      "props/bushes/frost_14.png",
+      "props/bushes/frost_15.png"
+     ]
+    },
+    "broadleaf": {
+     "sprites": [
+      "trees/bare_1.png",
+      "trees/bare_2.png",
+      "trees/bare_3.png",
+      "trees/bare_4.png",
+      "trees/bare_5.png",
+      "trees/bare_6.png"
+     ]
+    }
+   },
+   "props": {
     "forest_floor": [
      {
-      "density": 0.08,
       "sprites": [
-       "props/log_autumn_0.png",
-       "props/log_autumn_1.png",
-       "props/log_autumn_2.png",
-       "props/log_autumn_3.png"
+       "props/log_winter_0.png",
+       "props/log_winter_1.png",
+       "props/log_winter_2.png",
+       "props/log_winter_3.png"
       ],
+      "density": 0.08,
       "size": 1.2
      },
      {
-      "density": 0.1,
       "sprites": [
-       "props/stump_autumn_0.png",
-       "props/stump_autumn_1.png",
-       "props/stump_autumn_2.png",
-       "props/stump_autumn_3.png"
+       "props/bushes/frost_12.png",
+       "props/bushes/frost_13.png",
+       "props/bushes/frost_14.png",
+       "props/bushes/frost_15.png"
       ],
-      "size": 0.8
-     },
-     {
-      "density": 0.35,
-      "sprites": [
-       "props/bushes/orange_16.png",
-       "props/bushes/orange_17.png",
-       "props/bushes/orange_18.png",
-       "props/bushes/orange_19.png",
-       "props/bushes/yellow_20.png",
-       "props/bushes/yellow_21.png",
-       "props/bushes/yellow_22.png",
-       "props/bushes/yellow_23.png",
-       "props/bushes/amber_28.png",
-       "props/bushes/amber_29.png",
-       "props/bushes/amber_30.png",
-       "props/bushes/amber_31.png",
-       "props/bushes/red_32.png",
-       "props/bushes/red_33.png"
-      ],
-      "size": 1.3
+      "density": 0.3,
+      "size": 1.2
      }
     ],
     "dry_grass": [
      {
-      "density": 0.25,
       "sprites": [
-       "props/bushes/amber_28.png",
-       "props/bushes/amber_29.png",
-       "props/bushes/amber_30.png",
-       "props/bushes/amber_31.png",
-       "props/bushes/orange_16.png",
-       "props/bushes/orange_17.png",
-       "props/bushes/orange_18.png",
-       "props/bushes/orange_19.png"
+       "props/bushes/frost_12.png",
+       "props/bushes/frost_13.png",
+       "props/bushes/frost_14.png",
+       "props/bushes/frost_15.png"
       ],
-      "size": 1.1
+      "density": 0.2,
+      "size": 1
      },
      {
-      "density": 1,
       "sprites": [
-       "props/grass/yellow_21_0.png",
-       "props/grass/yellow_21_7.png",
-       "props/grass/yellow_21_14.png",
-       "props/grass/yellow_21_21.png",
-       "props/grass/yellow_21_28.png",
-       "props/grass/yellow_21_35.png",
-       "props/grass/yellow_21_42.png",
-       "props/grass/yellow_21_49.png",
-       "props/grass/yellow_21_56.png",
-       "props/grass/yellow_21_63.png",
-       "props/grass/yellow_21_70.png",
-       "props/grass/yellow_21_77.png",
-       "props/grass/yellow_23_0.png",
-       "props/grass/yellow_23_7.png",
-       "props/grass/yellow_23_14.png",
-       "props/grass/yellow_23_21.png",
-       "props/grass/yellow_23_28.png",
-       "props/grass/yellow_23_35.png",
-       "props/grass/yellow_23_42.png",
-       "props/grass/yellow_23_49.png",
-       "props/grass/yellow_23_56.png",
-       "props/grass/yellow_23_63.png",
-       "props/grass/yellow_23_70.png",
-       "props/grass/yellow_23_77.png",
-       "props/grass/red_16_0.png",
-       "props/grass/red_16_7.png",
-       "props/grass/red_16_14.png",
-       "props/grass/red_16_21.png",
-       "props/grass/red_16_28.png",
-       "props/grass/red_16_35.png",
-       "props/grass/red_16_42.png",
-       "props/grass/red_16_49.png",
-       "props/grass/red_16_56.png",
-       "props/grass/red_16_63.png",
-       "props/grass/red_16_70.png",
-       "props/grass/red_16_77.png",
-       "props/grass/red_17_0.png",
-       "props/grass/red_17_7.png",
-       "props/grass/red_17_14.png",
-       "props/grass/red_17_21.png",
-       "props/grass/red_17_28.png",
-       "props/grass/red_17_35.png",
-       "props/grass/red_17_42.png",
-       "props/grass/red_17_49.png",
-       "props/grass/red_17_56.png",
-       "props/grass/red_17_63.png",
-       "props/grass/red_17_70.png",
-       "props/grass/red_17_77.png"
+       "props/grass/frost_20_7.png",
+       "props/grass/frost_20_14.png",
+       "props/grass/frost_20_21.png",
+       "props/grass/frost_20_28.png",
+       "props/grass/frost_20_35.png",
+       "props/grass/frost_20_42.png",
+       "props/grass/frost_20_49.png",
+       "props/grass/frost_20_56.png",
+       "props/grass/frost_20_63.png",
+       "props/grass/frost_20_70.png",
+       "props/grass/frost_20_77.png"
       ],
-      "size": 0.5
+      "density": 0.6,
+      "size": 0.45
+     }
+    ],
+    "rural": [
+     {
+      "sprites": [
+       "props/grass/frost_20_7.png",
+       "props/grass/frost_20_14.png",
+       "props/grass/frost_20_21.png",
+       "props/grass/frost_20_28.png",
+       "props/grass/frost_20_35.png",
+       "props/grass/frost_20_42.png",
+       "props/grass/frost_20_49.png",
+       "props/grass/frost_20_56.png",
+       "props/grass/frost_20_63.png",
+       "props/grass/frost_20_70.png",
+       "props/grass/frost_20_77.png"
+      ],
+      "density": 0.3,
+      "size": 0.45
      }
     ],
     "scrub": [
      {
-      "density": 0.8,
       "sprites": [
-       "props/bushes/orange_16.png",
-       "props/bushes/orange_17.png",
-       "props/bushes/orange_18.png",
-       "props/bushes/orange_19.png",
-       "props/bushes/yellow_20.png",
-       "props/bushes/yellow_21.png",
-       "props/bushes/yellow_22.png",
-       "props/bushes/yellow_23.png",
-       "props/bushes/amber_28.png",
-       "props/bushes/amber_29.png",
-       "props/bushes/amber_30.png",
-       "props/bushes/amber_31.png",
-       "props/bushes/red_32.png",
-       "props/bushes/red_33.png"
+       "props/bushes/frost_12.png",
+       "props/bushes/frost_13.png",
+       "props/bushes/frost_14.png",
+       "props/bushes/frost_15.png"
       ],
-      "size": 1.4
+      "density": 0.8,
+      "size": 1.3
      }
     ],
     "meadow": [
      {
-      "density": 1.4,
       "sprites": [
-       "props/grass/yellow_21_0.png",
-       "props/grass/yellow_21_7.png",
-       "props/grass/yellow_21_14.png",
-       "props/grass/yellow_21_21.png",
-       "props/grass/yellow_21_28.png",
-       "props/grass/yellow_21_35.png",
-       "props/grass/yellow_21_42.png",
-       "props/grass/yellow_21_49.png",
-       "props/grass/yellow_21_56.png",
-       "props/grass/yellow_21_63.png",
-       "props/grass/yellow_21_70.png",
-       "props/grass/yellow_21_77.png",
-       "props/grass/yellow_23_0.png",
-       "props/grass/yellow_23_7.png",
-       "props/grass/yellow_23_14.png",
-       "props/grass/yellow_23_21.png",
-       "props/grass/yellow_23_28.png",
-       "props/grass/yellow_23_35.png",
-       "props/grass/yellow_23_42.png",
-       "props/grass/yellow_23_49.png",
-       "props/grass/yellow_23_56.png",
-       "props/grass/yellow_23_63.png",
-       "props/grass/yellow_23_70.png",
-       "props/grass/yellow_23_77.png",
-       "props/grass/green_7_0.png",
-       "props/grass/green_7_7.png",
-       "props/grass/green_7_14.png",
-       "props/grass/green_7_21.png",
-       "props/grass/green_7_28.png",
-       "props/grass/green_7_35.png",
-       "props/grass/green_7_42.png",
-       "props/grass/green_7_49.png",
-       "props/grass/green_7_56.png",
-       "props/grass/green_7_63.png",
-       "props/grass/green_7_70.png",
-       "props/grass/green_7_77.png",
-       "props/grass/green_8_0.png",
-       "props/grass/green_8_7.png",
-       "props/grass/green_8_14.png",
-       "props/grass/green_8_21.png",
-       "props/grass/green_8_28.png",
-       "props/grass/green_8_35.png",
-       "props/grass/green_8_42.png",
-       "props/grass/green_8_49.png",
-       "props/grass/green_8_56.png",
-       "props/grass/green_8_63.png",
-       "props/grass/green_8_70.png",
-       "props/grass/green_8_77.png",
-       "props/grass/green_10_0.png",
-       "props/grass/green_10_7.png",
-       "props/grass/green_10_14.png",
-       "props/grass/green_10_21.png",
-       "props/grass/green_10_28.png",
-       "props/grass/green_10_35.png",
-       "props/grass/green_10_42.png",
-       "props/grass/green_10_49.png",
-       "props/grass/green_10_56.png",
-       "props/grass/green_10_63.png",
-       "props/grass/green_10_70.png",
-       "props/grass/green_10_77.png",
-       "props/grass/green_3_0.png",
-       "props/grass/green_3_7.png",
-       "props/grass/green_3_14.png",
-       "props/grass/green_3_21.png",
-       "props/grass/green_3_28.png",
-       "props/grass/green_3_35.png",
-       "props/grass/green_3_42.png",
-       "props/grass/green_3_49.png",
-       "props/grass/green_3_56.png",
-       "props/grass/green_3_63.png",
-       "props/grass/green_3_70.png",
-       "props/grass/green_3_77.png",
-       "props/grass/red_16_0.png",
-       "props/grass/red_16_7.png",
-       "props/grass/red_16_14.png",
-       "props/grass/red_16_21.png",
-       "props/grass/red_16_28.png",
-       "props/grass/red_16_35.png",
-       "props/grass/red_16_42.png",
-       "props/grass/red_16_49.png",
-       "props/grass/red_16_56.png",
-       "props/grass/red_16_63.png",
-       "props/grass/red_16_70.png",
-       "props/grass/red_16_77.png",
-       "props/grass/red_17_0.png",
-       "props/grass/red_17_7.png",
-       "props/grass/red_17_14.png",
-       "props/grass/red_17_21.png",
-       "props/grass/red_17_28.png",
-       "props/grass/red_17_35.png",
-       "props/grass/red_17_42.png",
-       "props/grass/red_17_49.png",
-       "props/grass/red_17_56.png",
-       "props/grass/red_17_63.png",
-       "props/grass/red_17_70.png",
-       "props/grass/red_17_77.png"
+       "props/grass/frost_20_7.png",
+       "props/grass/frost_20_14.png",
+       "props/grass/frost_20_21.png",
+       "props/grass/frost_20_28.png",
+       "props/grass/frost_20_35.png",
+       "props/grass/frost_20_42.png",
+       "props/grass/frost_20_49.png",
+       "props/grass/frost_20_56.png",
+       "props/grass/frost_20_63.png",
+       "props/grass/frost_20_70.png",
+       "props/grass/frost_20_77.png"
       ],
-      "size": 0.55
+      "density": 0.8,
+      "size": 0.45
+     }
+    ],
+    "rock": [
+     {
+      "sprites": [
+       "props/rocks/snowy_20.png",
+       "props/rocks/snowy_21.png",
+       "props/rocks/snowy_22.png",
+       "props/rocks/snowy_23.png",
+       "props/rocks/snowy_24.png",
+       "props/rocks/snowy_25.png",
+       "props/rocks/snowy_26.png",
+       "props/rocks/snowy_27.png",
+       "props/rocks/snowy_28.png",
+       "props/rocks/snowy_29.png",
+       "props/rocks/snowy_30.png",
+       "props/rocks/snowy_32.png",
+       "props/rocks/snowy_36.png",
+       "props/rocks/snowy_38.png",
+       "props/rocks/snowy_39.png",
+       "props/rocks/snowy_40.png",
+       "props/rocks/snowy_41.png",
+       "props/rocks/snowy_42.png",
+       "props/rocks/snowy_43.png",
+       "props/rocks/snowy_47.png",
+       "props/rocks/snowy_48.png",
+       "props/rocks/snowy_49.png"
+      ],
+      "density": 0.25,
+      "size": 2.4
+     },
+     {
+      "sprites": [
+       "props/rocks/snowy_10.png",
+       "props/rocks/snowy_11.png",
+       "props/rocks/snowy_12.png",
+       "props/rocks/snowy_13.png",
+       "props/rocks/snowy_14.png",
+       "props/rocks/snowy_15.png",
+       "props/rocks/snowy_16.png",
+       "props/rocks/snowy_17.png",
+       "props/rocks/snowy_18.png",
+       "props/rocks/snowy_19.png"
+      ],
+      "density": 0.35,
+      "size": 1.2
+     },
+     {
+      "sprites": [
+       "props/rocks/snowy_0.png",
+       "props/rocks/snowy_1.png",
+       "props/rocks/snowy_2.png",
+       "props/rocks/snowy_3.png",
+       "props/rocks/snowy_4.png",
+       "props/rocks/snowy_5.png",
+       "props/rocks/snowy_6.png",
+       "props/rocks/snowy_7.png",
+       "props/rocks/snowy_8.png",
+       "props/rocks/snowy_9.png"
+      ],
+      "density": 0.6,
+      "size": 0.6
+     }
+    ],
+    "grass": [
+     {
+      "sprites": [
+       "props/grass/frost_20_7.png",
+       "props/grass/frost_20_14.png",
+       "props/grass/frost_20_21.png",
+       "props/grass/frost_20_28.png",
+       "props/grass/frost_20_35.png",
+       "props/grass/frost_20_42.png",
+       "props/grass/frost_20_49.png",
+       "props/grass/frost_20_56.png",
+       "props/grass/frost_20_63.png",
+       "props/grass/frost_20_70.png",
+       "props/grass/frost_20_77.png"
+      ],
+      "density": 0.4,
+      "size": 0.4
      }
     ]
-   },
-   "trees": {
-    "broadleaf": {
-     "sprites": [
-      "trees/autumn_1.png",
-      "trees/autumn_2.png",
-      "trees/autumn_3.png",
-      "trees/autumn_4.png",
-      "trees/autumn_5.png",
-      "trees/autumn_6.png",
-      "trees/autumn_7.png",
-      "trees/autumn_8.png",
-      "trees/autumn_9.png",
-      "trees/autumn_10.png",
-      "trees/autumn_11.png",
-      "trees/autumn_12.png",
-      "trees/autumn_13.png",
-      "trees/autumn_14.png"
-     ]
-    },
-    "shrub": {
-     "sprites": [
-      "props/bushes/orange_16.png",
-      "props/bushes/orange_17.png",
-      "props/bushes/orange_18.png",
-      "props/bushes/orange_19.png",
-      "props/bushes/yellow_20.png",
-      "props/bushes/yellow_21.png",
-      "props/bushes/yellow_22.png",
-      "props/bushes/yellow_23.png",
-      "props/bushes/amber_28.png",
-      "props/bushes/amber_29.png",
-      "props/bushes/amber_30.png",
-      "props/bushes/amber_31.png",
-      "props/bushes/red_32.png",
-      "props/bushes/red_33.png"
-     ]
-    }
    }
   }
  },
  "license": "Ships with the game only. Art: Antahonist terrain tiles (free, no resale), Pixel Art Isometric Tree pack and Bush pack (same creator), VOiD1 Gaming Low-Poly Bike Models.",
+ "bikes": {
+  "mtb": {
+   "texture": "bikes/bike_basecolor.png"
+  }
+ },
+ "credits": [
+  "Terrain & nature: Antahonist (antahonist.itch.io)",
+  "Trees: Pixel Art Isometric Tree pack",
+  "Bushes, rocks, grass: Pixel Art Isometric Bush / Rock / Grass packs (same creator as the trees)",
+  "Water: baked with WOWe Generator by Yavuz (MIT)",
+  "Bike: VOiD1 Gaming"
+ ],
  "props": {
   "forest_floor": [
    {
-    "density": 0.08,
     "sprites": [
      "props/log_summer_0.png",
      "props/log_summer_1.png",
      "props/log_summer_2.png",
      "props/log_summer_3.png"
     ],
+    "density": 0.08,
     "size": 1.2
    },
    {
-    "density": 0.1,
     "sprites": [
      "props/stump_summer_0.png",
      "props/stump_summer_1.png",
      "props/stump_summer_2.png",
      "props/stump_summer_3.png"
     ],
+    "density": 0.1,
     "size": 0.8
    },
    {
-    "density": 0.35,
     "sprites": [
      "props/bushes/green_0.png",
      "props/bushes/green_1.png",
@@ -695,10 +700,10 @@
      "props/bushes/mint_26.png",
      "props/bushes/mint_27.png"
     ],
+    "density": 0.35,
     "size": 1.3
    },
    {
-    "density": 0.08,
     "sprites": [
      "props/rocks/mossy_10.png",
      "props/rocks/mossy_11.png",
@@ -711,10 +716,10 @@
      "props/rocks/mossy_18.png",
      "props/rocks/mossy_19.png"
     ],
+    "density": 0.08,
     "size": 1
    },
    {
-    "density": 0.3,
     "sprites": [
      "props/grass/green_7_0.png",
      "props/grass/green_7_7.png",
@@ -765,12 +770,12 @@
      "props/grass/green_3_70.png",
      "props/grass/green_3_77.png"
     ],
+    "density": 0.3,
     "size": 0.45
    }
   ],
   "wetland": [
    {
-    "density": 1.2,
     "sprites": [
      "props/grass/dry_13_14.png",
      "props/grass/dry_13_21.png",
@@ -841,22 +846,22 @@
      "props/grass/green_3_70.png",
      "props/grass/green_3_77.png"
     ],
+    "density": 1.2,
     "size": 0.6
    }
   ],
   "dry_grass": [
    {
-    "density": 0.25,
     "sprites": [
      "props/bushes/olive_4.png",
      "props/bushes/olive_5.png",
      "props/bushes/olive_6.png",
      "props/bushes/olive_7.png"
     ],
+    "density": 0.25,
     "size": 1.1
    },
    {
-    "density": 1,
     "sprites": [
      "props/grass/dry_13_14.png",
      "props/grass/dry_13_21.png",
@@ -903,22 +908,22 @@
      "props/grass/yellow_23_70.png",
      "props/grass/yellow_23_77.png"
     ],
+    "density": 1,
     "size": 0.5
    }
   ],
   "meadow": [
    {
-    "density": 0.8,
     "sprites": [
      "props/flowers_summer_0.png",
      "props/flowers_summer_1.png",
      "props/flowers_summer_2.png",
      "props/flowers_summer_3.png"
     ],
+    "density": 0.8,
     "size": 0.6
    },
    {
-    "density": 1.6,
     "sprites": [
      "props/grass/green_7_0.png",
      "props/grass/green_7_7.png",
@@ -969,12 +974,12 @@
      "props/grass/green_3_70.png",
      "props/grass/green_3_77.png"
     ],
+    "density": 1.6,
     "size": 0.55
    }
   ],
   "orchard": [
    {
-    "density": 0.6,
     "sprites": [
      "props/grass/green_7_0.png",
      "props/grass/green_7_7.png",
@@ -1025,22 +1030,22 @@
      "props/grass/green_3_70.png",
      "props/grass/green_3_77.png"
     ],
+    "density": 0.6,
     "size": 0.45
    }
   ],
   "grass": [
    {
-    "density": 0.25,
     "sprites": [
      "props/flowers_summer_0.png",
      "props/flowers_summer_1.png",
      "props/flowers_summer_2.png",
      "props/flowers_summer_3.png"
     ],
+    "density": 0.25,
     "size": 0.6
    },
    {
-    "density": 0.9,
     "sprites": [
      "props/grass/green_7_0.png",
      "props/grass/green_7_7.png",
@@ -1091,12 +1096,12 @@
      "props/grass/green_3_70.png",
      "props/grass/green_3_77.png"
     ],
+    "density": 0.9,
     "size": 0.45
    }
   ],
   "rock": [
    {
-    "density": 0.25,
     "sprites": [
      "props/rocks/gray_20.png",
      "props/rocks/gray_21.png",
@@ -1165,10 +1170,10 @@
      "props/rocks/slate_48.png",
      "props/rocks/slate_49.png"
     ],
+    "density": 0.25,
     "size": 2.4
    },
    {
-    "density": 0.35,
     "sprites": [
      "props/rocks/gray_10.png",
      "props/rocks/gray_11.png",
@@ -1211,10 +1216,10 @@
      "props/rocks/dark_gray_18.png",
      "props/rocks/dark_gray_19.png"
     ],
+    "density": 0.35,
     "size": 1.2
    },
    {
-    "density": 0.6,
     "sprites": [
      "props/rocks/gray_0.png",
      "props/rocks/gray_1.png",
@@ -1237,12 +1242,12 @@
      "props/rocks/slate_8.png",
      "props/rocks/slate_9.png"
     ],
+    "density": 0.6,
     "size": 0.6
    }
   ],
   "rural": [
    {
-    "density": 0.5,
     "sprites": [
      "props/grass/green_7_0.png",
      "props/grass/green_7_7.png",
@@ -1293,10 +1298,10 @@
      "props/grass/green_3_70.png",
      "props/grass/green_3_77.png"
     ],
+    "density": 0.5,
     "size": 0.5
    },
    {
-    "density": 0.05,
     "sprites": [
      "props/rocks/gray_0.png",
      "props/rocks/gray_1.png",
@@ -1319,12 +1324,12 @@
      "props/rocks/brown_8.png",
      "props/rocks/brown_9.png"
     ],
+    "density": 0.05,
     "size": 0.6
    }
   ],
   "scrub": [
    {
-    "density": 0.8,
     "sprites": [
      "props/bushes/green_0.png",
      "props/bushes/green_1.png",
@@ -1339,20 +1344,20 @@
      "props/bushes/mint_26.png",
      "props/bushes/mint_27.png"
     ],
+    "density": 0.8,
     "size": 1.4
    },
    {
-    "density": 0.12,
     "sprites": [
      "props/bushes/pink_8.png",
      "props/bushes/pink_9.png",
      "props/bushes/pink_10.png",
      "props/bushes/pink_11.png"
     ],
+    "density": 0.12,
     "size": 1.2
    },
    {
-    "density": 0.1,
     "sprites": [
      "props/rocks/brown_0.png",
      "props/rocks/brown_1.png",
@@ -1375,40 +1380,12 @@
      "props/rocks/gray_8.png",
      "props/rocks/gray_9.png"
     ],
+    "density": 0.1,
     "size": 0.6
-   }
-  ],
-  "sand": [
-   {
-    "density": 0.12,
-    "sprites": [
-     "props/rocks/sandstone_0.png",
-     "props/rocks/sandstone_1.png",
-     "props/rocks/sandstone_2.png",
-     "props/rocks/sandstone_3.png",
-     "props/rocks/sandstone_4.png",
-     "props/rocks/sandstone_5.png",
-     "props/rocks/sandstone_6.png",
-     "props/rocks/sandstone_7.png",
-     "props/rocks/sandstone_8.png",
-     "props/rocks/sandstone_9.png",
-     "props/rocks/sand_beige_0.png",
-     "props/rocks/sand_beige_1.png",
-     "props/rocks/sand_beige_2.png",
-     "props/rocks/sand_beige_3.png",
-     "props/rocks/sand_beige_4.png",
-     "props/rocks/sand_beige_5.png",
-     "props/rocks/sand_beige_6.png",
-     "props/rocks/sand_beige_7.png",
-     "props/rocks/sand_beige_8.png",
-     "props/rocks/sand_beige_9.png"
-    ],
-    "size": 0.5
    }
   ],
   "farmland": [
    {
-    "density": 0.15,
     "sprites": [
      "props/grass/green_7_0.png",
      "props/grass/green_7_7.png",
@@ -1479,22 +1456,38 @@
      "props/grass/dry_14_70.png",
      "props/grass/dry_14_77.png"
     ],
+    "density": 0.15,
+    "size": 0.5
+   }
+  ],
+  "sand": [
+   {
+    "sprites": [
+     "props/rocks/sandstone_0.png",
+     "props/rocks/sandstone_1.png",
+     "props/rocks/sandstone_2.png",
+     "props/rocks/sandstone_3.png",
+     "props/rocks/sandstone_4.png",
+     "props/rocks/sandstone_5.png",
+     "props/rocks/sandstone_6.png",
+     "props/rocks/sandstone_7.png",
+     "props/rocks/sandstone_8.png",
+     "props/rocks/sandstone_9.png",
+     "props/rocks/sand_beige_0.png",
+     "props/rocks/sand_beige_1.png",
+     "props/rocks/sand_beige_2.png",
+     "props/rocks/sand_beige_3.png",
+     "props/rocks/sand_beige_4.png",
+     "props/rocks/sand_beige_5.png",
+     "props/rocks/sand_beige_6.png",
+     "props/rocks/sand_beige_7.png",
+     "props/rocks/sand_beige_8.png",
+     "props/rocks/sand_beige_9.png"
+    ],
+    "density": 0.12,
     "size": 0.5
    }
   ]
- },
- "credits": [
-  "Terrain & nature: Antahonist (antahonist.itch.io)",
-  "Trees: Pixel Art Isometric Tree pack",
-  "Bushes, rocks, grass: Pixel Art Isometric Bush / Rock / Grass packs (same creator as the trees)",
-  "Water: baked with WOWe Generator by Yavuz (MIT)",
-  "Bike: VOiD1 Gaming"
- ],
- "sun": {
-  "colour": "#fff1d6",
-  "ground": "#6b6050",
-  "strength": 2.4,
-  "ambient": "#dfeeff"
  },
  "local_only": false,
  "tile_metres": 3.3,
@@ -1575,17 +1568,14 @@
    "ground/grass_3.png",
    "ground/grass_4.png"
   ],
-  "parking": [
-   "ground/parking_1.png"
-  ],
   "pitch": [
    "ground/pitch_1.png",
    "ground/pitch_2.png",
    "ground/pitch_3.png",
    "ground/pitch_4.png"
   ],
-  "rail": [
-   "ground/rail_1.png"
+  "parking": [
+   "ground/parking_1.png"
   ],
   "rural": [
    "ground/rural_1.png",
@@ -1604,15 +1594,32 @@
   ],
   "farmland": [
    "ground/farmland_1.png"
+  ],
+  "rail": [
+   "ground/rail_1.png"
   ]
+ },
+ "rider": {
+  "shorts": "#1f1f24",
+  "helmet": "#f2f2f2",
+  "jersey": "#c8392f",
+  "skin": "#e3b48f"
  },
  "filter": {
   "colours": 64,
   "pixel": 3
  },
+ "bridge": {
+  "arch": "bridge/arch_1.png",
+  "parapet": "bridge/parapet_1.png",
+  "tile_metres": 1.5,
+  "parapet_height": 1,
+  "side": "#b9a88f",
+  "deck_thickness": 0.7,
+  "wall": "bridge/brick_1.png",
+  "stone": "bridge/stone_1.png"
+ },
  "buildings": {
-  "floor_metres": 3.2,
-  "ground_floor_metres": 4.2,
   "roofs": [
    "buildings/roof_tiles.png"
   ],
@@ -1650,63 +1657,24 @@
    ]
   ],
   "styles": 6,
-  "bay_metres": 2.9
+  "bay_metres": 2.9,
+  "floor_metres": 3.2,
+  "ground_floor_metres": 4.2
  },
- "bridge": {
-  "side": "#b9a88f"
- },
- "rider": {
-  "jersey": "#c8392f",
-  "helmet": "#f2f2f2",
-  "shorts": "#1f1f24",
-  "skin": "#e3b48f"
- },
- "wall": {
-  "texture": "ground/cobble_1.png",
-  "tint": [
-   0.95,
-   0.9,
-   0.85
-  ]
- },
- "id": "default",
- "author": "Tiny Atlas",
  "trees": {
-  "broadleaf": {
-   "height": [
-    10,
-    16
-   ],
-   "sprites": [
-    "trees/broadleaf_1.png",
-    "trees/broadleaf_2.png",
-    "trees/broadleaf_3.png",
-    "trees/broadleaf_4.png",
-    "trees/broadleaf_5.png",
-    "trees/broadleaf_6.png",
-    "trees/broadleaf_7.png",
-    "trees/broadleaf_8.png",
-    "trees/broadleaf_9.png",
-    "trees/broadleaf_10.png"
-   ]
-  },
   "conifer": {
-   "height": [
-    12,
-    22
-   ],
    "sprites": [
     "trees/conifer_1.png",
     "trees/conifer_2.png",
     "trees/conifer_3.png",
     "trees/conifer_4.png"
+   ],
+   "height": [
+    12,
+    22
    ]
   },
   "shrub": {
-   "height": [
-    1.2,
-    2.4
-   ],
    "sprites": [
     "props/bushes/green_0.png",
     "props/bushes/green_1.png",
@@ -1722,13 +1690,13 @@
     "props/bushes/mint_27.png",
     "props/bushes/pink_8.png",
     "props/bushes/pink_9.png"
+   ],
+   "height": [
+    1.2,
+    2.4
    ]
   },
   "orchard": {
-   "height": [
-    4,
-    6
-   ],
    "sprites": [
     "trees/broadleaf_1.png",
     "trees/broadleaf_2.png",
@@ -1740,7 +1708,46 @@
     "trees/broadleaf_8.png",
     "trees/broadleaf_9.png",
     "trees/broadleaf_10.png"
+   ],
+   "height": [
+    4,
+    6
+   ]
+  },
+  "broadleaf": {
+   "sprites": [
+    "trees/broadleaf_1.png",
+    "trees/broadleaf_2.png",
+    "trees/broadleaf_3.png",
+    "trees/broadleaf_4.png",
+    "trees/broadleaf_5.png",
+    "trees/broadleaf_6.png",
+    "trees/broadleaf_7.png",
+    "trees/broadleaf_8.png",
+    "trees/broadleaf_9.png",
+    "trees/broadleaf_10.png"
+   ],
+   "height": [
+    10,
+    16
    ]
   }
- }
+ },
+ "wall": {
+  "tint": [
+   0.95,
+   0.9,
+   0.85
+  ],
+  "texture": "ground/cobble_1.png"
+ },
+ "version": "1.0.0",
+ "sky": {
+  "horizon": "#c8dbe8",
+  "haze": "#c8dbe8",
+  "fog_near": 300,
+  "fog_far": 7000,
+  "top": "#6fa6dc"
+ },
+ "author": "Tiny Atlas"
 }

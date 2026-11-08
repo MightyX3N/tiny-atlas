@@ -284,11 +284,13 @@ theme = {
     'buildings': {'facades': 'buildings/facades.png', 'styles': 6, 'bay_metres': 2.9, 'floor_metres': 3.2,
                   'ground_floor_metres': 4.2, 'roofs': ['buildings/roof_tiles.png'],
                   'roof_tints': [[1, 1, 1], [1, 1, 1], [1, 1, 1], [0.62, 0.68, 0.78], [0.55, 0.58, 0.62], [1.05, 0.95, 0.85]]},
-    'bridge': {'side': '#b9a88f'},
+    'bridge': {'side': '#b9a88f', 'wall': 'bridge/brick_1.png', 'stone': 'bridge/stone_1.png', 'parapet': 'bridge/parapet_1.png',
+               'arch': 'bridge/arch_1.png', 'tile_metres': 1.5, 'parapet_height': 1.0, 'deck_thickness': 0.7},
     'filter': {'pixel': 3, 'colours': 64},
     'rider': {'jersey': '#c8392f', 'shorts': '#1f1f24', 'skin': '#e3b48f', 'helmet': '#f2f2f2'},
     'bikes': {'mtb': {'texture': 'bikes/bike_basecolor.png'}},
 }
+import bridge_art; bridge_art.main(OUT, PID)        # bridge parts (drawn, not from an asset pack)
 open(os.path.join(LUA, PID + '.lua'), 'w').write('-- Tiny Atlas asset pack. Format: docs/FORMATS.md\nreturn ' + lua(theme) + '\n')
 json.dump({'title': 'Tiny Atlas - Default pack', 'type': 'gamemode', 'tags': ['fun'], 'ignore': []},
           open(os.path.join(OUT, 'addon.json'), 'w'), indent=1)

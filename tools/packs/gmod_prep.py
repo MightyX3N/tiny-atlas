@@ -107,6 +107,7 @@ def main(pack_dir):
     gfiles = set()
     strings(P['ground'], gfiles)
     for s in P.get('seasons', {}).values(): strings(s.get('ground', {}), gfiles)
+    strings(P.get('bridge', {}), gfiles)                 # bridge parts are opaque tiles too
     gfiles = sorted(gfiles)
     tiles = {f: Image.open(os.path.join(mat, f)).convert('RGBA') for f in gfiles}
     T = tiles[gfiles[0]].size[0]
@@ -125,6 +126,9 @@ def main(pack_dir):
     def gset(table):
         return {tag: [gcell[f] for f in fl] for tag, fl in table.items()}
     ground = {'cells': gset(P['ground']), 'colour': {t: avg_rgb(tiles[fl[0]]) for t, fl in P['ground'].items()}}
+    br = P.get('bridge', {})
+    bridge = {k: gcell[v] for k, v in br.items() if isinstance(v, str) and v.endswith('.png')}
+    bridge.update({k + '_colour': avg_rgb(tiles[v]) for k, v in br.items() if isinstance(v, str) and v.endswith('.png')})
     seasons = {}
     for sn, s in P.get('seasons', {}).items():
         seasons[sn] = {}
@@ -185,7 +189,7 @@ def main(pack_dir):
     data = {
         'pack': pid, 'source_hash': src_hash.hexdigest(),
         'ground_png': f'tinyatlas/packs/{pid}/gmod/ground.png', 'ground_size': [W, H], 'tile_px': T,
-        'ground': ground, 'objects': objects, 'seasons': seasons, 'water_colour': wcol,
+        'ground': ground, 'objects': objects, 'seasons': seasons, 'water_colour': wcol, 'bridge': bridge,
     }
     out_lua = os.path.join(luadir, f'{pid}_gmod.lua')
     with open(out_lua, 'w', encoding='utf-8') as f:

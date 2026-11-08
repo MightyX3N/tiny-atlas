@@ -417,6 +417,13 @@ return {
   },
   bridge = {
     side = "#b9a88f",
+    wall = "bridge/brick_1.png",
+    stone = "bridge/stone_1.png",
+    parapet = "bridge/parapet_1.png",
+    arch = "bridge/arch_1.png",
+    tile_metres = 1.5,
+    parapet_height = 1.0,
+    deck_thickness = 0.7,
   },
   filter = {
     pixel = 3,

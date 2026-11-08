@@ -6,7 +6,7 @@ from lupa import luajit21 as lj
 L = lj.LuaRuntime(unpack_returned_tuples=True)
 
 def load_pack(addon):
-    luas = glob.glob(os.path.join(addon, 'lua', 'tinyatlas', 'packs', '*.lua'))
+    luas = [f for f in glob.glob(os.path.join(addon, 'lua', 'tinyatlas', 'packs', '*.lua')) if not f.endswith('_gmod.lua')]
     if len(luas) != 1: raise SystemExit(f'{addon}: expected exactly one lua/tinyatlas/packs/<id>.lua, found {len(luas)}')
     src = open(luas[0], encoding='utf-8').read()
     # packs are data: run the file with an empty environment (no os, io, require, ...)

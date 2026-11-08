@@ -86,7 +86,9 @@ function M.ground_lod1(b, C, bi, bj, B, tagcells, fallback, water_tag, wall_rect
       v = false
       if T[k] == water_tag then
         local hc = (H[gj * n + gi] + H[gj * n + gi + 1] + H[(gj + 1) * n + gi] + H[(gj + 1) * n + gi + 1]) / 4
-        v = hc < M.water_z(C, gi + 0.5, gj + 0.5) + 1.2
+        -- under a bridge it is always water (the bridge is drawn on its own); elsewhere a cell well above
+        -- the water is a street crossing it
+        v = (C.under ~= nil and C.under[k] == true) or hc < M.water_z(C, gi + 0.5, gj + 0.5) + 1.2
       end
       wetc[k] = v
     end
@@ -222,7 +224,7 @@ function M.water_lod1(b, C, bi, bj, B, water_tag, frames, sheet_px)
       local gi = i0 + i
       local hc = T[gj * tn + gi] == water_tag and
         (C.H[gj * C.n + gi] + C.H[gj * C.n + gi + 1] + C.H[(gj + 1) * C.n + gi] + C.H[(gj + 1) * C.n + gi + 1]) / 4
-      if hc and hc < water_z(C, gi + 0.5, gj + 0.5) + 1.2 then
+      if hc and ((C.under and C.under[gj * tn + gi]) or hc < water_z(C, gi + 0.5, gj + 0.5) + 1.2) then
         local gx, gy = gx0 + gi, gy0 + gj
         local fx = (gx - floor(gx / K) * K) / K
         local fy = (gy - floor(gy / K) * K) / K
@@ -434,43 +436,110 @@ function M.tree(b, x, y, z, rect, height, ang, s)
   end
 end
 
--- Bridge deck segment: top into the ground buffer (the tag's texture, one tile per ~3 m), sides and
--- underside into the objects buffer
-function M.bridge_segment(gb, ob, x1, y1, z1, x2, y2, z2, w, rect, white, side)
-  local dx, dy = x2 - x1, y2 - y1
-  local L = sqrt(dx * dx + dy * dy)
-  if L < 0.05 then return end
-  local ux, uy = dx / L, dy / L
-  local nx, ny = -uy, ux
-  local s = 255 * shade_n(0, 0, 1)
-  local na, nw = max(1, floor(L / 3 + 0.5)), max(1, floor(w / 3 + 0.5))
-  for a = 0, na - 1 do
-    local f0, f1 = a / na, (a + 1) / na
-    local ax, ay, az = x1 + dx * f0, y1 + dy * f0, z1 + (z2 - z1) * f0
-    local bx, by, bz = x1 + dx * f1, y1 + dy * f1, z1 + (z2 - z1) * f1
-    for c = 0, nw - 1 do
-      local o0, o1 = -w / 2 + w * c / nw, -w / 2 + w * (c + 1) / nw
-      vert(gb, ax + nx * o0, ay + ny * o0, az, rect[1], rect[4], s, s, s)
-      vert(gb, bx + nx * o0, by + ny * o0, bz, rect[3], rect[4], s, s, s)
-      vert(gb, bx + nx * o1, by + ny * o1, bz, rect[3], rect[2], s, s, s)
-      vert(gb, ax + nx * o1, ay + ny * o1, az, rect[1], rect[2], s, s, s)
-      done(gb)
+-- ---------------------------------------------------------------- bridges ----
+-- A bridge built from the pack's parts to fit its real path, width and height: road deck, a parapet on each
+-- side, a stone deck edge, brick walls down to an arched (over water) or flat underside, and end walls.
+-- X, Y, Z: the deck centreline (local metres, deck top) resampled at exactly half a part tile per step;
+-- U: underside z at each point; w: width; deck: atlas cells of the road surface; P: look.bridge.
+-- Everything uses ground atlas cells, so a bridge is part of the ground's single draw.
+function M.bridge_model(b, X, Y, Z, U, w, deck, P, open)
+  local n = #X
+  if n < 2 then return end
+  local T, ph, th = P.tile, P.parapet_h, P.thick
+  local NX, NY = {}, {}
+  for k = 1, n do
+    local a, c = max(1, k - 1), min(n, k + 1)
+    local dx, dy = X[c] - X[a], Y[c] - Y[a]
+    local l = sqrt(dx * dx + dy * dy)
+    if l < 1e-6 then dx, dy, l = 1, 0, 1 end
+    NX[k], NY[k] = -dy / l, dx / l
+  end
+  local hw = w / 2
+  local pw = min(0.3, w * 0.1)                       -- parapet thickness
+  -- one quad: corners a (bottom-left) b (bottom-right) c (top-right) d (top-left), part r, sub-rect fractions
+  local function quad(r, ax, ay, az, bx, by, bz, cx, cy, cz, dx, dy, dz, fu0, fu1, fv0, fv1, sh)
+    local du, dv = r[3] - r[1], r[4] - r[2]
+    local u0, u1 = r[1] + du * fu0, r[1] + du * fu1
+    local v0, v1 = r[2] + dv * fv0, r[2] + dv * fv1
+    local s = c255(255 * sh)
+    vert(b, ax, ay, az, u0, v1, s, s, s); vert(b, bx, by, bz, u1, v1, s, s, s)
+    vert(b, cx, cy, cz, u1, v0, s, s, s); vert(b, dx, dy, dz, u0, v0, s, s, s)
+    done(b)
+  end
+  -- a vertical wall strip between two points, from zb (bottom) to zt (top), tiled every T metres upwards
+  local function wall(r, ax, ay, azb, azt, bx, by, bzb, bzt, fu0, fu1, sh)
+    local ha, hb = azt - azb, bzt - bzb
+    local rows = max(1, math.ceil(max(ha, hb) / T - 0.01))
+    for q = 0, rows - 1 do
+      local f0, f1 = q / rows, (q + 1) / rows
+      local za0, za1 = azb + ha * f0, azb + ha * f1
+      local zb0, zb1 = bzb + hb * f0, bzb + hb * f1
+      local tv = min(1, max(ha, hb) / rows / T)
+      if za1 - za0 > 0.01 or zb1 - zb0 > 0.01 then
+        quad(r, ax, ay, za0, bx, by, zb0, bx, by, zb1, ax, ay, za1, fu0, fu1, 1 - tv, 1, sh)
+      end
     end
   end
-  local hx, hy = nx * w / 2, ny * w / 2
-  local u, v = (white[1] + white[3]) / 2, (white[2] + white[4]) / 2
-  for sd = -1, 1, 2 do
-    local ex, ey = hx * sd, hy * sd
-    local sh = wall_shade(dx * sd, dy * sd, L)
-    local r, g, bl = c255(side[1] * sh), c255(side[2] * sh), c255(side[3] * sh)
-    vert(ob, x1 + ex, y1 + ey, z1 + 0.05, u, v, r, g, bl); vert(ob, x2 + ex, y2 + ey, z2 + 0.05, u, v, r, g, bl)
-    vert(ob, x2 + ex, y2 + ey, z2 - 0.9, u, v, r, g, bl); vert(ob, x1 + ex, y1 + ey, z1 - 0.9, u, v, r, g, bl)
-    done(ob)
+  local K = M.TILE_CELLS
+  local ns = max(1, floor(w + 0.5))                 -- 1 m strips across the road surface
+  local dr = deck[1]
+  -- how far the deck reaches on each side at point k: to the parapet, or over to a neighbouring deck
+  local function reach(sd, k)
+    local o = open and open[sd] and open[sd][k]
+    if o then return hw + o + 0.1, true end
+    return hw - pw, false
   end
-  local r, g, bl = c255(side[1] * 0.45), c255(side[2] * 0.45), c255(side[3] * 0.45)
-  vert(ob, x1 - hx, y1 - hy, z1 - 0.9, u, v, r, g, bl); vert(ob, x2 - hx, y2 - hy, z2 - 0.9, u, v, r, g, bl)
-  vert(ob, x2 + hx, y2 + hy, z2 - 0.9, u, v, r, g, bl); vert(ob, x1 + hx, y1 + hy, z1 - 0.9, u, v, r, g, bl)
-  done(ob)
+  for k = 1, n - 1 do
+    local x1, y1, z1, x2, y2, z2 = X[k], Y[k], Z[k], X[k + 1], Y[k + 1], Z[k + 1]
+    local n1x, n1y, n2x, n2y = NX[k], NY[k], NX[k + 1], NY[k + 1]
+    local fu0 = ((k - 1) % 2) / 2                     -- half a part tile per step
+    local fu1 = fu0 + 0.5
+    -- road surface (its tag's ground tile, repeating every 3 m like the streets)
+    local du0 = ((k - 1) % (2 * K)) / (2 * K)
+    local du1 = du0 + 1 / (2 * K)
+    local l1, l2 = reach(-1, k), reach(-1, k + 1)
+    local r1, r2 = reach(1, k), reach(1, k + 1)
+    for q = 0, ns - 1 do
+      local fa, fb = q / ns, (q + 1) / ns
+      local a1, b1 = -l1 + (l1 + r1) * fa, -l1 + (l1 + r1) * fb
+      local a2, b2 = -l2 + (l2 + r2) * fa, -l2 + (l2 + r2) * fb
+      local fv0 = (q % K) / K
+      quad(dr, x1 + n1x * a1, y1 + n1y * a1, z1, x1 + n1x * b1, y1 + n1y * b1, z1,
+               x2 + n2x * b2, y2 + n2y * b2, z2, x2 + n2x * a2, y2 + n2y * a2, z2, du0, du1, fv0, fv0 + 1 / K, shade_n(0, 0, 1))
+    end
+    for sd = -1, 1, 2 do
+      -- a side touching another deck (bridges mapped side by side) has no parapet or side wall
+      if not (open and open[sd] and (open[sd][k] or open[sd][k + 1])) then
+      local e1x, e1y, e2x, e2y = n1x * hw * sd, n1y * hw * sd, n2x * hw * sd, n2y * hw * sd
+      local i1x, i1y, i2x, i2y = n1x * (hw - pw) * sd, n1y * (hw - pw) * sd, n2x * (hw - pw) * sd, n2y * (hw - pw) * sd
+      local so = shade_n(n1x * sd, n1y * sd, 0.1)
+      local si = shade_n(-n1x * sd, -n1y * sd, 0.1)
+      -- outer face: parapet above the deck, stone deck edge, brick down to the underside
+      wall(P.parapet, x1 + e1x, y1 + e1y, z1, z1 + ph, x2 + e2x, y2 + e2y, z2, z2 + ph, fu0, fu1, so)
+      wall(P.stone, x1 + e1x, y1 + e1y, z1 - th, z1, x2 + e2x, y2 + e2y, z2 - th, z2, fu0, fu1, so * 0.95)
+      if U[k] < z1 - th - 0.05 or U[k + 1] < z2 - th - 0.05 then
+        wall(P.wall, x1 + e1x, y1 + e1y, U[k], z1 - th, x2 + e2x, y2 + e2y, U[k + 1], z2 - th, fu0, fu1, so * 0.9)
+      end
+      -- inner face of the parapet and its coping on top
+      wall(P.parapet, x1 + i1x, y1 + i1y, z1, z1 + ph, x2 + i2x, y2 + i2y, z2, z2 + ph, fu0, fu1, si)
+      quad(P.stone, x1 + i1x, y1 + i1y, z1 + ph, x2 + i2x, y2 + i2y, z2 + ph, x2 + e2x, y2 + e2y, z2 + ph,
+           x1 + e1x, y1 + e1y, z1 + ph, fu0, fu1, 0, 0.25, shade_n(0, 0, 1))
+      end
+    end
+    -- underside: the arch (or the slab) in darker brick
+    local L1 = max(hw, (reach(-1, k))); local L2 = max(hw, (reach(-1, k + 1)))
+    local R1 = max(hw, (reach(1, k))); local R2 = max(hw, (reach(1, k + 1)))
+    quad(P.arch, x1 - n1x * L1, y1 - n1y * L1, U[k], x2 - n2x * L2, y2 - n2y * L2, U[k + 1], x2 + n2x * R2, y2 + n2y * R2, U[k + 1],
+         x1 + n1x * R1, y1 + n1y * R1, U[k], fu0, fu1, 0, min(1, w / T), 0.45)
+  end
+  -- end walls (they meet the street at each end; any part above it shows)
+  for _, k in ipairs({ 1, n }) do
+    local x, y, z = X[k], Y[k], Z[k]
+    local ox, oy = NX[k] * hw, NY[k] * hw
+    local dir = k == 1 and -1 or 1
+    local tx, ty = -NY[k] * dir, NX[k] * dir
+    wall(P.wall, x - ox, y - oy, U[k], z - th, x + ox, y + oy, U[k], z - th, 0, min(1, w / T), shade_n(-tx, -ty, 0.1))
+  end
 end
 
 -- ---------------------------------------------------------------- distant levels ----

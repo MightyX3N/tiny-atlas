@@ -125,6 +125,16 @@ function M.validate(pack, fs, base)
     end
   end
   if pack.wall then image(pack.wall.texture, "wall.texture", true) end
+  if pack.bridge then
+    local br = pack.bridge
+    if br.side ~= nil and not is_colour(br.side) then err("bridge.side must be a colour like #b9a88f") end
+    for _, k in ipairs({ "wall", "stone", "parapet", "arch" }) do
+      if br[k] ~= nil then image(br[k], "bridge." .. k, true) end
+    end
+    if (br.wall or br.stone or br.parapet or br.arch) and not (br.wall and br.stone and br.parapet and br.arch) then
+      warn("bridge: give all four parts (wall, stone, parapet, arch) or none; missing ones fall back to plain colours")
+    end
+  end
   if pack.buildings then
     local b = pack.buildings
     image(b.facades, "buildings.facades")

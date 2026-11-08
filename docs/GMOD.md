@@ -37,6 +37,9 @@ Four levels, finest first (`world/world_stream.lua`):
 - **16 m pages** (1024 m): every page of the route, always drawn, with holes where the 4 m level is.
 - **far grid**: 32 m data drawn at 64 m, lower than everything above where they overlap.
 
+Bridges are pieces of their own (within the 4 m radius), built from the pack's bridge parts to fit each
+bridge; see the Bridges section of `FORMATS.md`.
+
 Levels change with some slack so nothing flips at an edge. A piece is only swapped in once whatever fills its
 holes is built, so the level below never shows through. Building is spread over frames: loading a chunk from
 disk, computing a piece and uploading each mesh (≤ `ta_mesh_slice` quads) are separate steps, and each frame
