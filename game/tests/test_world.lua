@@ -13,7 +13,9 @@ os.execute('mkdir -p "' .. DATA .. '/tinyatlas/routes"')
 os.execute('ln -s "$(cd "' .. ROUTES .. '" && pwd)/' .. ROUTE .. '" "' .. DATA .. '/tinyatlas/routes/' .. ROUTE .. '"')
 local GMDIR = "../gamemodes/tinyatlas/gamemode"
 local F = dofile("fakegmod.lua")(DATA, GMDIR)
-dofile("fakegmod_render.lua")(F, { lua_roots = { PACK .. "/lua" }, material_roots = { PACK .. "/materials" } })
+dofile("fakegmod_render.lua")(F, { lua_roots = { PACK .. "/lua", "../gamemodes" }, material_roots = { PACK .. "/materials" } })
+GM.FolderName = "tinyatlas"
+http = http or { Fetch = function(url, ok, fail) fail("no network in test") end }
 
 F.keep = CAPTURE ~= nil
 local fails = 0
