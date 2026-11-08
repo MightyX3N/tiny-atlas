@@ -1,3 +1,6 @@
+> **Replaced.** This renderer was removed from the gamemode when the world builder was restarted
+> (see `WORLD_BUILDER.md`). The description below is kept for reference; the code is in the git history.
+
 # The world in Garry's Mod
 
 The gamemode draws the route itself (it takes over `RenderScene`), streaming the world around the rider.

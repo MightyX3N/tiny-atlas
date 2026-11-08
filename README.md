@@ -56,8 +56,9 @@ cd tools && python3 render_tests.py city-run     # renders a contact sheet into 
 python3 tools/gmod_export.py routes/city-run-10km <garrysmod>/data/tinyatlas/routes
 ```
 
-Then with the gamemode and the pack addon installed: `ta_ride city-run-10-km` or `ta_perftest city-run-10-km`.
-See [`docs/GMOD.md`](docs/GMOD.md).
+The old grid renderer (`ta_ride`, `ta_perftest`) has been removed from the gamemode while the world builder is
+rebuilt in Lua (see [`docs/WORLD_BUILDER.md`](docs/WORLD_BUILDER.md)); it stays in the git history before this
+change. For now the gamemode has `ta_buildbench`, which builds a real map tile in the game and reports the speed.
 
 ## Tests
 
@@ -67,7 +68,7 @@ python3 ../../tools/luajit.py test_physics.lua
 python3 ../../tools/luajit.py test_gmod_bridge.lua
 python3 ../../tools/luajit.py ../../third_party/omniplay-sdk/tools/omniplay_sim.lua bike 12 &
 python3 ../../tools/luajit.py test_trainer_sim.lua
-python3 ../../tools/luajit.py test_world.lua <exported routes dir> city-run-10-km 60
+python3 ../../tools/luajit.py test_atlas_bench.lua <data dir> <tile file> <tilejson file>
 ```
 
 ## Licences
