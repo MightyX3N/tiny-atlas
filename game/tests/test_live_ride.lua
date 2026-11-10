@@ -60,7 +60,9 @@ wrap(ATLAS_REQUIRE("route"), "finish_heights", "route heights")
 local world_mod = ATLAS_REQUIRE("world")
 local new0 = world_mod.new
 world_mod.new = function(o) wrap(o, "make", "GMod meshes"); return new0(o) end
-TinyAtlas.Ride = { s = 0, speed = 0 }
+-- the test moves the rider itself: the gamemode's own rider (trainer / keys) is switched off
+F.hooks.Think.TinyAtlas_Ride = nil
+TinyAtlas.Ride.s, TinyAtlas.Ride.speed = 0, 0
 
 -- one frame of the game at 60 fps: Think runs the build jobs; measure how long that frame's Lua took
 local worst_frame, frames, slow = 0, 0, 0

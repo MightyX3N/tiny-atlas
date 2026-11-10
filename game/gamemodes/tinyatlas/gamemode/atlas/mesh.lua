@@ -113,13 +113,7 @@ function M.build(r, g, opts)
 
   local groups, cur = {}, {}
   local TM = opts.tex_metres or {}
-  -- an aerial photo over the whole cell (opts.photo = { u0, v0, u1, v1 }: the part of the image this cell is):
-  -- every ground triangle takes it, the light only shades the slopes a little (the photo has its own)
-  local P = opts.photo
-  local pu, pv, pdu, pdv
-  if P then pu, pv, pdu, pdv = P.u0, P.v0, (P.u1 - P.u0) / (8192 * k), (P.v1 - P.v0) / (8192 * k) end
   local function group(tex)
-    if P then tex = "photo" end
     local G = cur[tex]
     if not G or G.n + 6 > M.MAX_VERTS then
       G = { tex = tex, n = 0, d = {}, tm = TM[tex] or tm }
@@ -134,14 +128,7 @@ function M.build(r, g, opts)
     -- they continue across cells
     local gm = G.tm
     d[i + 1], d[i + 2], d[i + 3] = x * U, y * U, z * U
-    if P then
-      d[i + 4], d[i + 5] = pu + x * pdu, pv - y * pdv
-      c = c / FLAT
-      c = 255 * (c < 1 and (0.55 + 0.45 * c) or (1 + 0.25 * (c - 1)))
-      if c > 255 then c = 255 end
-    else
-      d[i + 4], d[i + 5] = (ox + x) / gm, -(oy + y) / gm
-    end
+    d[i + 4], d[i + 5] = (ox + x) / gm, -(oy + y) / gm
     d[i + 6], d[i + 7], d[i + 8] = c, c, c
     G.n = G.n + 1
   end
@@ -184,7 +171,6 @@ function M.build(r, g, opts)
       end
       local along = abs(dx) > abs(dy)
       local function wv(x, y, z)
-        if P then return vert(W, x, y, z, c * FLAT / 255) end
         local d, i8 = W.d, W.n * 8
         d[i8 + 1], d[i8 + 2], d[i8 + 3] = x * U, y * U, z * U
         d[i8 + 4], d[i8 + 5] = ((along and (ox + x) or -(oy + y))) / W.tm, -z / W.tm
@@ -238,8 +224,7 @@ function M.far(H, tx, ty, opts)
     if opts.tick then opts.tick() end
   end
   local sm = step * k
-  local P = opts.photo
-  local G = { tex = P and "photo" or M.FAR_TEXTURE, n = 0, d = {} }
+  local G = { tex = M.FAR_TEXTURE, n = 0, d = {} }
   local d = G.d
   local function shade(i, j)
     local il, ir = math.max(0, i - 1), math.min(n, i + 1)
@@ -256,14 +241,7 @@ function M.far(H, tx, ty, opts)
     local o = G.n * 8
     d[o + 1], d[o + 2], d[o + 3] = x * U, y * U, z * U
     local c = shade(i, j)
-    if P then
-      d[o + 4], d[o + 5] = P.u0 + i / n * (P.u1 - P.u0), P.v0 + j / n * (P.v1 - P.v0)
-      c = c / FLAT
-      c = 255 * (c < 1 and (0.55 + 0.45 * c) or (1 + 0.25 * (c - 1)))
-      if c > 255 then c = 255 end
-    else
-      d[o + 4], d[o + 5] = (ox + x) / tm, -(oy + y) / tm
-    end
+    d[o + 4], d[o + 5] = (ox + x) / tm, -(oy + y) / tm
     d[o + 6], d[o + 7], d[o + 8] = c, c, c
     G.n = G.n + 1
   end

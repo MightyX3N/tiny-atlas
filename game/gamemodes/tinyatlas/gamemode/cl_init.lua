@@ -1,4 +1,8 @@
 include("shared.lua")
+include("cl_ui.lua")
 include("cl_ride.lua")
 include("cl_atlas.lua")
 include("cl_view.lua")
+include("cl_hud.lua")
+include("cl_menu.lua")
+include("cl_gmod.lua")

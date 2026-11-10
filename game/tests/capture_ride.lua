@@ -59,7 +59,9 @@ local V = TinyAtlas.View
 for _, kv in ipairs({ { "TA_STYLE", "ta_style" }, { "TA_PACK", "ta_pack" }, { "TA_PIXELATE", "ta_pixelate" }, { "TA_CAM_BACK", "ta_cam_back" }, { "TA_CAM_UP", "ta_cam_up" } }) do
   if os.getenv(kv[1]) then F.set(kv[2], os.getenv(kv[1])) end
 end
-TinyAtlas.Ride = { s = 0, speed = 8 }
+-- the test moves the rider itself: the gamemode's own rider (trainer / keys) is switched off
+F.hooks.Think.TinyAtlas_Ride = nil
+TinyAtlas.Ride.s, TinyAtlas.Ride.speed = 0, 8
 
 local function step_frame()
   F.tick(1 / 60)

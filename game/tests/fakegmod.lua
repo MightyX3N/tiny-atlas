@@ -77,7 +77,17 @@ return function(DATA, GMDIR)
     SendToServer = function() F.nets[#F.nets + 1] = F.net_msg end, Receive = function() end,
   }
   concommand = { Add = function() end }
-  input = { IsKeyDown = function(k) return F.keys[k] == true end }
+  input = { IsKeyDown = function(k) return F.keys[k] == true end,
+    IsMouseDown = function(b) return F.mouse_down == true end,
+    GetCursorPos = function() return F.mouse_x or 0, F.mouse_y or 0 end }
+  MOUSE_LEFT, MOUSE_RIGHT = 107, 108
+  -- every key the game reads (numbers as GMod's)
+  local KN = { "UP", "DOWN", "LEFT", "RIGHT", "ENTER", "PAD_ENTER", "SPACE", "BACKSPACE", "TAB", "ESCAPE", "W", "A", "S",
+    "D", "B", "LSHIFT", "RSHIFT", "PERIOD", "COMMA", "MINUS", "PAD_DECIMAL", "PAD_MINUS", "APOSTROPHE" }
+  for i = 0, 9 do KN[#KN + 1] = tostring(i); KN[#KN + 1] = "PAD_" .. i end
+  for c = string.byte("A"), string.byte("Z") do KN[#KN + 1] = string.char(c) end
+  local nk = 200
+  for _, k in ipairs(KN) do if _G["KEY_" .. k] == nil then nk = nk + 1; _G["KEY_" .. k] = nk end end
   function RealTime() return F.t end
   function CurTime() return F.t end
   function FrameTime() return F.dt or 0.05 end

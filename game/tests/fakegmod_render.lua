@@ -189,11 +189,42 @@ return function(F, opts)
     if #model_stack == 0 then err("PopModelMatrix with nothing pushed") end
     model_stack[#model_stack] = nil
   end
+  -- 2D: rectangles and text are recorded per frame (F.rects, F.texts with positions), fonts checked to exist first
   surface = {}
-  function surface.SetDrawColor() end
+  local fonts, cur_font, tpos = {}, nil, { 0, 0 }
+  F.rects, F.text_at = 0, {}
+  function surface.SetDrawColor(r, g, b, a)
+    if type(r) == "table" then return end
+    if type(r) ~= "number" or type(g) ~= "number" or type(b) ~= "number" then err("SetDrawColor needs numbers") end
+  end
   function surface.SetMaterial() end
   function surface.DrawTexturedRect() end
-  function surface.CreateFont() end
+  function surface.DrawRect(x, y, w, h)
+    if type(x) ~= "number" or type(h) ~= "number" then err("DrawRect needs numbers") end
+    F.rects = F.rects + 1
+  end
+  function surface.CreateFont(name, data)
+    if type(data) ~= "table" or not data.font or not data.size then err("CreateFont without a font or size") end
+    fonts[name] = data
+  end
+  function surface.SetFont(name)
+    if not fonts[name] then err("SetFont: no font " .. tostring(name) .. " (CreateFont it first)") end
+    cur_font = fonts[name]
+  end
+  -- text size: about 0.55 em a letter, one em tall (enough for layout checks)
+  function surface.GetTextSize(t)
+    local sz = cur_font and cur_font.size or 13
+    return math.floor(#tostring(t) * sz * 0.55), sz
+  end
+  function surface.SetTextColor() end
+  function surface.SetTextPos(x, y) tpos = { x, y } end
+  function surface.DrawText(t)
+    if not cur_font then err("DrawText without SetFont") end
+    t = tostring(t)
+    F.texts[#F.texts + 1] = t
+    F.text_at[#F.text_at + 1] = { t, tpos[1], tpos[2] }
+  end
+  gui = { EnableScreenClicker = function(on) F.cursor = on end }
   draw = {}
   function draw.SimpleText(t) F.texts[#F.texts + 1] = t end
   function draw.SimpleTextOutlined(t) F.texts[#F.texts + 1] = t end
@@ -262,6 +293,16 @@ return function(F, opts)
   function CV:GetInt() return math.floor(tonumber(self.value) or 0) end
   function CV:GetBool() return (tonumber(self.value) or 0) ~= 0 end
   function F.set(name, v) F.convars[name].value = tostring(v) end
+  function CV:SetString(v) self.value = tostring(v) end
+  function CV:SetFloat(v) self.value = tostring(v) end
+  function CV:SetInt(v) self.value = tostring(math.floor(v)) end
+  function RunConsoleCommand(name, ...)
+    local args = { ... }
+    if F.convars[name] then F.convars[name].value = tostring(args[1] or ""); return end
+    if F.commands[name] then return F.commands[name](nil, name, args) end
+    F.ran = F.ran or {}
+    F.ran[#F.ran + 1] = name
+  end
   function concommand.Add(name, fn) F.commands[name] = fn end
   function F.run(name, ...) return F.commands[name](nil, name, { ... }) end
 
@@ -278,7 +319,7 @@ return function(F, opts)
   -- one rendered frame
   function F.render_frame(dt)
     F.dt = dt; F.t = F.t + dt
-    F.texts, F.frame_draws = {}, 0
+    F.texts, F.frame_draws, F.text_at, F.rects = {}, 0, {}, 0
     F.render_target, F.screen_quad = nil, nil
     if F.capture then F.draws = {} end
     return hook.Run("RenderScene", Vector(0, 0, 0), Angle(0, 0, 0), 75)

@@ -14,12 +14,16 @@ check("gamemode loads; OmniPlay API present", OmniPlay ~= nil and OmniPlay.Get ~
 check("bridge uses the data folder (no module installed)", OmniPlay.Native == false)
 hook.Run("InitPostEntity")
 check("trainer created", TinyAtlas.Ride.trainer ~= nil)
-check("no auto-start: the world view draws nothing until a ride starts", F.render_frame(1 / 60) == nil and F.frame_draws == 0)
+-- the game owns the screen from the start (its title screen); no ride is running yet
+F.render_frame(1 / 60)
+check("the game's screens draw from the start", TinyAtlas.Screens ~= nil and TinyAtlas.Screens.screen == "title" and #F.texts > 0)
+check("no ride running: the rider stands still", TinyAtlas.Ride.mode ~= "ride")
 check("ride commands registered", F.commands.ta_ride ~= nil and F.commands.ta_roam ~= nil and F.commands.ta_stop ~= nil)
 check("new builder bench command registered", F.commands.ta_buildbench ~= nil)
 
--- a test route: flat, then a 6 % climb from 100 m
-TinyAtlas.Route.grade_at = function(s) return s >= 100 and 6 or 0 end
+-- a test route: flat, then a 6 % climb from 100 m (ridden: the rider's mode as when a ride is going)
+TinyAtlas.Route = { grade_at = function(s) return s >= 100 and 6 or 0 end, tag_at = function() return "asphalt" end, wind_along = 0 }
+TinyAtlas.Ride.start("ride")
 
 -- 1) no OmniPlay: keyboard riding
 F.keys[KEY_W] = true

@@ -40,7 +40,7 @@ local function begin(self, o, mode, R, lat, lon)
   local P = self.P
   local W = world.new({
     fetch = P.fetch, lat = lat, lon = lon, tile_metres = o.tile_metres or 3.3, unit = 1,
-    tex_metres = o.tex_metres, far_metres = o.far_metres, buildings = o.buildings, photos = o.photos, style = o.style,
+    tex_metres = o.tex_metres, far_metres = o.far_metres, buildings = o.buildings, style = o.style,
     make = P.make, free = P.free, log = function(m) self:log(m) end,
   })
   self.W, self.R, self.mode, self.on = W, R, mode, true

@@ -1,6 +1,8 @@
 -- A route to ride: read from GPX, placed in the world, with heights from the built ground. Shared by every game.
 --
---   route.parse_gpx(text) -> { name = ..., points = { {lat, lon}, ... } } or nil, error
+--   route.parse_gpx(text) -> { name = ..., points = { {lat, lon, ele or nil}, ... } } or nil, error
+--   route.summary(gpx) -> { length = m, climb = m, low, high, profile = { {metres along, height}, ... } (about 300),
+--     heights = true if the file has them }      for menus, before any world is built
 --   local R = route.new(points, world)     world: world.lua instance (positions, cells)
 --   R.n, R.S[i] (metres along), R.X[i], R.Y[i] (metres from the world origin, y north), R.GX[i], R.GY[i] (global
 --   units), R.Z[i] (metres, after heights are filled in), R.surf[i] (ground surface under the point)
@@ -17,15 +19,56 @@ end
 function M.parse_gpx(text)
   local pts = {}
   for _, kind in ipairs({ "trkpt", "rtept" }) do
-    for tag in text:gmatch("<" .. kind .. "%s[^>]*>") do
+    -- each point's tag, and its height (<ele>) up to the next point
+    local pos = 1
+    while true do
+      local a, b, tag = text:find("<" .. kind .. "(%s[^>]*)>", pos)
+      if not a then break end
       local lat, lon = attr(tag, "lat"), attr(tag, "lon")
-      if lat and lon then pts[#pts + 1] = { lat, lon } end
+      local nexta = text:find("<" .. kind .. "[%s>]", b + 1) or #text + 1
+      local ele = not tag:find("/%s*$") and tonumber((text:sub(b + 1, nexta - 1):match("<ele>%s*([-%d%.eE]+)%s*</ele>")))
+      if lat and lon then pts[#pts + 1] = { lat, lon, ele or nil } end
+      pos = b + 1
     end
     if #pts > 0 then break end
   end
   if #pts < 2 then return nil, "no track points in the GPX file" end
   local name = text:match("<trk>%s*<name>([^<]*)</name>") or text:match("<name>([^<]*)</name>")
   return { name = name, points = pts }
+end
+
+function M.summary(g)
+  local P = g.points
+  local heights = P[1][3] ~= nil
+  -- metres along, and the heights smoothed over about 200 m (GPS and coarse elevation data wobble, most on
+  -- hairpins), so the climbing adds up to what the road really climbs
+  local D, E = { 0 }, {}
+  for i = 2, #P do
+    local p, q = P[i], P[i - 1]
+    local k = 111320 * math.cos(math.rad(p[1]))
+    D[i] = D[i - 1] + sqrt(((p[1] - q[1]) * 110540) ^ 2 + ((p[2] - q[2]) * k) ^ 2)
+  end
+  local lo, hi, climb = math.huge, -math.huge, 0
+  if heights then
+    local a, b, sum = 1, 0, 0
+    for i = 1, #P do
+      while b < #P and D[b + 1] <= D[i] + 100 do b = b + 1; sum = sum + (P[b][3] or 0) end
+      while D[a] < D[i] - 100 do sum = sum - (P[a][3] or 0); a = a + 1 end
+      E[i] = sum / (b - a + 1)
+      if E[i] < lo then lo = E[i] end
+      if E[i] > hi then hi = E[i] end
+    end
+    local last = E[1]
+    for i = 2, #P do
+      if E[i] - last > 3 then climb = climb + (E[i] - last); last = E[i]
+      elseif last - E[i] > 3 then last = E[i] end
+    end
+  end
+  local prof, every = {}, math.max(1, floor(#P / 300))
+  for i = 1, #P do
+    if i % every == 0 or i == #P or i == 1 then prof[#prof + 1] = { D[i], E[i] or 0 } end
+  end
+  return { length = D[#P], climb = climb, low = heights and lo or 0, high = heights and hi or 0, profile = prof, heights = heights }
 end
 
 function M.new(points, world)

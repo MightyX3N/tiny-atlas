@@ -10,7 +10,6 @@
 --   opts.log(msg)                       status lines
 --   opts.tex_metres   metres per ground texture, per texture (pack.tex_metres; others use tile_metres)
 --   opts.buildings    true: buildings from the map (bne_buildings.lua, BeamNG.Earth's rules)
---   opts.photos       true: aerial photos on the ground (photos.lua); groups with tex "photo" carry G.photo
 --   opts.style        "flat" (low-poly colours, the default look) or "textured" (the pack's ground textures)
 --   opts.trees        the pack's 3D tree models (trees.lua places them by the ground's surfaces); nil: no trees
 --
@@ -30,7 +29,6 @@ local height = ATLAS_REQUIRE("height")
 local ground = ATLAS_REQUIRE("ground")
 local mesh = ATLAS_REQUIRE("mesh")
 local buildings = ATLAS_REQUIRE("buildings")
-local photos = ATLAS_REQUIRE("photos")
 local match = ATLAS_REQUIRE("match")
 local trees = ATLAS_REQUIRE("trees")
 local floor, sqrt, max, min, cos, rad, abs = math.floor, math.sqrt, math.max, math.min, math.cos, math.rad, math.abs
@@ -176,6 +174,55 @@ end
 -- a map tile's decoded layers (downloads it if needed; inside a build job)
 function M:tile_layers(tx, ty, tick) return ensure(self, tx, ty, tick) end
 
+-- The map around a point for a minimap: the roads, paths and water of the tiles already loaded, as lines in metres
+-- from the world's origin. { { kind = "road" | "path" | "water" | "rail", pts = { x, y, x, y, ... } }, ... }
+-- Made once per tile (kept with the tile); tiles not loaded yet give nothing.
+local MAP_KIND = { motorway = "road", trunk = "road", primary = "road", secondary = "road", tertiary = "road",
+  minor = "road", service = "road", track = "path", path = "path", rail = "rail", transit = "rail" }
+function M:map_lines(x, y, radius)
+  local gx, gy = self:global_of_metres(x, y)
+  local r = radius / self.k
+  local out = {}
+  for tx = floor((gx - r) / TILE), floor((gx + r) / TILE) do
+    for ty = floor((gy - r) / TILE), floor((gy + r) / TILE) do
+      local t = self.tiles[tkey(tx, ty)]
+      if t and t.layers then
+        if not t.map then
+          local lines = {}
+          local scale = TILE / 4096
+          local function add(L, kind_of)
+            if not L then return end
+            for _, f in ipairs(L.features) do
+              local kind = kind_of(f)
+              if kind and (f.type == 2 or kind == "water") then
+                for _, part in ipairs(f.parts) do
+                  local pts = {}
+                  for i = 1, #part - 1, 2 do
+                    local mx, my = self:metres_of(tx * TILE + part[i] * scale, ty * TILE + part[i + 1] * scale)
+                    pts[#pts + 1] = mx; pts[#pts + 1] = my
+                  end
+                  if f.type == 3 and #pts >= 4 then pts[#pts + 1] = pts[1]; pts[#pts + 1] = pts[2] end
+                  if #pts >= 4 then lines[#lines + 1] = { kind = kind, pts = pts } end
+                end
+              end
+            end
+          end
+          add(t.layers.transportation, function(f)
+            local p = f.props or {}
+            if p.brunnel == "tunnel" then return nil end
+            return MAP_KIND[p.class] or (p.class and "road")
+          end)
+          add(t.layers.waterway, function() return "water" end)
+          add(t.layers.water, function() return "water" end)
+          t.map = lines
+        end
+        for _, l in ipairs(t.map) do out[#out + 1] = l end
+      end
+    end
+  end
+  return out
+end
+
 -- a feature added to a map tile (tile units): kept for when the tile is decoded again; cells of that tile already
 -- built where it lies are dropped so they get built again with it
 function M:add_feature(tx, ty, f)
@@ -291,28 +338,6 @@ function M:unpin(owner)
   owner.pins = nil
 end
 
--- an aerial photo for tile z/x/y (inside a build job: waits for the download); nil when there is none
-local function photo_start(self, z, x, y)
-  local st = { state = "loading", z = z, x = x, y = y }
-  photos.get(self.F, z, x, y, function(p) st.p = p; st.state = "ok" end, function(e) st.state = "failed"; st.err = e end)
-  return st
-end
-local function photo_for(self, z, x, y, st)
-  st = st or photo_start(self, z, x, y)
-  while st.state == "loading" do coroutine.yield() end
-  if st.p then
-    self.photo_used = self.photo_used or {}
-    if not self.photo_used[st.p.source] then
-      self.photo_used[st.p.source] = true
-      self.log("aerial photos: " .. st.p.credit)
-    end
-  elseif not self.photo_warned then
-    self.photo_warned = true
-    self.log("FAILED: no aerial photo for " .. z .. "/" .. x .. "/" .. y .. " (" .. tostring(st.err) .. "): drawing the map's surfaces instead")
-  end
-  return st.p
-end
-M.photo_for = photo_for
 
 -- ---- which cells: around the rider, and along the route ahead ----
 function M:focus(x, y, fx, fy)
@@ -416,11 +441,8 @@ local function build_far(self, tx, ty, tick)
   if self.far[key] ~= f then return end
   if h.state ~= "ready" then f.state = "failed"; return end
   f.ox, f.oy = self:metres_of(tx * TILE, ty * TILE)
-  local photo = self.o.photos and photo_for(self, 14, tx, ty) or nil
-  if self.far[key] ~= f then return end
-  local groups = (self.o.style == "flat" and mesh.far_flat or mesh.far)(self.H, tx, ty, { k = self.k, ox = f.ox, oy = f.oy, tile_metres = self.o.far_metres or self.o.tile_metres, photo = photo,
+  local groups = (self.o.style == "flat" and mesh.far_flat or mesh.far)(self.H, tx, ty, { k = self.k, ox = f.ox, oy = f.oy, tile_metres = self.o.far_metres or self.o.tile_metres,
     unit = self.o.unit, tick = tick })
-  if photo then for _, G in ipairs(groups) do if G.tex == "photo" then G.photo = photo end end end
   f.handle = self.o.make(groups, f)
   f.state = "ready"
 end
@@ -446,8 +468,6 @@ function M:work(tick, clock)
   local c = { cx = cx, cy = cy, state = "building" }
   self.cells[key] = c
   local t0 = clock and clock()
-  -- the photo downloads while the cell is built
-  local pst = self.o.photos and photo_start(self, 17, cx, cy) or nil
   local ok, r, g, layers = pcall(self.build_cell, self, cx, cy, tick)
   if self.cells[key] ~= c then return true end     -- dropped while building
   if not ok or not r then
@@ -461,15 +481,10 @@ function M:work(tick, clock)
     end
     return true
   end
-  local photo
-  if self.o.photos then
-    photo = photo_for(self, 17, cx, cy, pst)
-    if self.cells[key] ~= c then return true end     -- dropped while waiting for the photo
-  end
   self:pin_cell(c, cx, cy, r, g)
   c.ox, c.oy = self:metres_of(cx * CELL, cy * CELL)
   local groups = (self.o.style == "flat" and mesh.build_flat or mesh.build)(r, g, { k = self.k, ox = c.ox, oy = c.oy, tile_metres = self.o.tile_metres,
-    tex_metres = self.o.tex_metres, unit = self.o.unit, tick = tick, photo = photo })
+    tex_metres = self.o.tex_metres, unit = self.o.unit, tick = tick })
   if self.o.buildings and layers then
     local tx, ty = floor(cx / 8), floor(cy / 8)
     -- the drawn ground under a building (metres from the cell origin); outside the cell, the elevation data
@@ -495,7 +510,6 @@ function M:work(tick, clock)
     if okt then for _, G in ipairs(tg) do groups[#groups + 1] = G end; c.trees = nt
     else self.log(string.format("FAILED: trees of cell %d/%d: %s", cx, cy, tostring(tg))) end
   end
-  if photo then for _, G in ipairs(groups) do if G.tex == "photo" then G.photo = photo end end end
   c.r, c.g = r, g
   c.problems = #r.problems + #g.problems
   if c.problems > 0 then

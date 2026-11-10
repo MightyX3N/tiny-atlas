@@ -95,7 +95,7 @@ function M:get(kind, z, x, y, ok, err)
   end, function(e) finish(nil, e) end)
 end
 
--- any tile by URL, cached under <root>/<kind>/<z>/<x>_<y>.dat (photos, land cover). A failure is remembered for the
+-- any tile by URL, cached under <root>/<kind>/<z>/<x>_<y>.dat (land cover, Overture blocks). A failure is remembered for the
 -- session (and a 404 on disk, as an empty file), so a tile a service does not have is not asked for again.
 function M:get_url(kind, z, x, y, url, ok, err)
   local path = string.format("%s/%s/%d/%d_%d.dat", self.root, kind, z, x, y)

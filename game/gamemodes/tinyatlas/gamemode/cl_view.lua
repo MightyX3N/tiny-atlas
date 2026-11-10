@@ -1,10 +1,12 @@
 -- The new world in Garry's Mod: builds the ground around the rider from live map data (atlas/world.lua), draws it,
 -- and rides a GPX route on it (or roams freely).
 --
---   ta_ride <route>        ride a route: one of the test routes (ta_ride with no name lists them) or a GPX file
+-- The game's own screens (cl_menu.lua) start and stop rides through V.Preview / V.StartRoute / V.StartRoam / V.Stop.
+-- Developer commands (console):
+--   ta_ride <route>        ride a route: one of the game's routes (ta_ride with no name lists them) or a GPX file
 --                          you put in garrysmod/data/tinyatlas/gpx/
 --   ta_roam [lat] [lon]    ride freely from a place (default: central Copenhagen); A / D steer
---   ta_stop                back to the normal game view
+--   ta_stop                back to the main menu
 -- The world is built while you ride; the route gets its heights as the cells along it are built. It says what it is
 -- doing in the console by itself: loading, how riding goes every 30 s, falling behind, problems, FAILED lines.
 local world = ATLAS_REQUIRE("world")
@@ -20,7 +22,7 @@ local VIEW = 700                          -- metres: built cells farther away ar
 local LOOK = { sky_top = { 96, 150, 206 }, sky_horizon = { 196, 216, 232 }, fog_near = 300, fog_far = 2000 }
 local MAX_BOOST_MS = 40                   -- build time per frame while the loading screen is up
 -- settings (console for now; the settings menu will use the same names)
-local cv_style = CreateClientConVar("ta_style", "flat", true, false, "World look: flat (low-poly colours) or textured (the asset pack's ground textures)")
+local cv_style = CreateClientConVar("ta_style", "textured", true, false, "World look: flat (low-poly colours) or textured (the asset pack's ground textures)")
 local cv_pack = CreateClientConVar("ta_pack", "default", true, false, "Asset pack for the textured look (default, city, ...)")
 -- the pixel-art look is made over the whole picture (drawn small, stretched with sharp pixels), not in the textures
 local cv_pixel = CreateClientConVar("ta_pixelate", "4", true, false, "Pixel size of the pixel-art look: 1 = off, 2-8 = screen pixels per pixel")
@@ -48,6 +50,8 @@ local cv_back = CreateClientConVar("ta_cam_back", "9", true, false, "Camera dist
 local cv_up = CreateClientConVar("ta_cam_up", "4", true, false, "Camera height above the rider (m)")
 
 local function say(msg) print("[Tiny Atlas] " .. msg) end
+V.say = say
+V.cv = { style = cv_style, pack = cv_pack, back = cv_back, up = cv_up }
 
 -- ---- the asset pack's ground textures ----
 local function load_pack(id)
@@ -176,20 +180,32 @@ local function free_meshes(h)
 end
 
 -- ---- reading routes ----
-local function read_gpx(name)
+local read_gpx
+function V.read_gpx(name) return read_gpx(name) end
+function read_gpx(name)
   local text = file.Read("tinyatlas/gpx/" .. name .. ".gpx", "DATA") or file.Read("tinyatlas/gpx/" .. name, "DATA")
   if not text then text = file.Read("gamemodes/" .. (GM or GAMEMODE).FolderName .. "/routes/" .. name .. ".gpx", "GAME") end
   return text
 end
+-- the game's routes and the player's own GPX files (data/tinyatlas/gpx/): { id, file name, own = true/false }
+function V.list_routes()
+  local out = {}
+  for _, f in ipairs(file.Find("gamemodes/" .. (GM or GAMEMODE).FolderName .. "/routes/*.gpx", "GAME") or {}) do
+    out[#out + 1] = { id = f:gsub("%.gpx$", ""), own = false }
+  end
+  for _, f in ipairs(file.Find("tinyatlas/gpx/*.gpx", "DATA") or {}) do out[#out + 1] = { id = f:gsub("%.gpx$", ""), own = true } end
+  return out
+end
 local function list_routes()
   local out = {}
-  for _, f in ipairs(file.Find("gamemodes/" .. (GM or GAMEMODE).FolderName .. "/routes/*.gpx", "GAME") or {}) do out[#out + 1] = f:gsub("%.gpx$", "") end
-  for _, f in ipairs(file.Find("tinyatlas/gpx/*.gpx", "DATA") or {}) do out[#out + 1] = f:gsub("%.gpx$", "") .. " (your file)" end
+  for _, r in ipairs(V.list_routes()) do out[#out + 1] = r.id .. (r.own and " (your file)" or "") end
   return out
 end
 
 -- ---- start / stop ----
 function V.Stop()
+  V.route_name, V.preview = nil, false
+  if TinyAtlas.Ride then TinyAtlas.Ride.mode = "off" end
   if V.W then V.W:shutdown() end
   V.W, V.on = nil, false
   if V.job then V.job.cancel = true end
@@ -230,6 +246,33 @@ local function start(opts)
   return true
 end
 
+-- the menu's background: the route's world, ridden by itself (TinyAtlas.Ride.mode = "auto")
+function V.Preview(name)
+  if V.route_name == name and V.W then
+    V.preview = true
+    if TinyAtlas.Ride.mode ~= "auto" then TinyAtlas.Ride.start("auto") end
+    return true
+  end
+  local ok = V.StartRoute(name)
+  if ok then V.preview = true; TinyAtlas.Ride.start("auto") end
+  return ok
+end
+
+-- ride a route from its start: its world is reused when it is already loaded (the menu's background)
+function V.RideRoute(name)
+  if V.route_name == name and V.W and V.mode == "ride" then
+    V.preview = false
+    TinyAtlas.Ride.start("ride")
+    TinyAtlas.Ride.mode = "paused"       -- until the start is built
+    V.phase, V.started = "loading", SysTime()
+    if TinyAtlasJobs then TinyAtlasJobs.boost_ms = MAX_BOOST_MS end
+    return true
+  end
+  local ok = V.StartRoute(name)
+  if ok then V.preview = false; TinyAtlas.Ride.start("ride"); TinyAtlas.Ride.mode = "paused" end
+  return ok
+end
+
 function V.StartRoute(name)
   local text = read_gpx(name)
   if not text then
@@ -246,12 +289,17 @@ function V.StartRoute(name)
   say(string.format("riding %s (%.2f km): building the world around the start...", g.name or name, R.length / 1000))
   TinyAtlas.Route = R
   if TinyAtlas.Ride then TinyAtlas.Ride.s = 0 end
-  return start({ mode = "ride", R = R, lat = lat, lon = lon })
+  local ok = start({ mode = "ride", R = R, lat = lat, lon = lon })
+  V.route_name, V.route_title = name, g.name or name
+  return ok
 end
 
 function V.StartRoam(lat, lon)
   say(string.format("free roam at %.4f, %.4f: loading...", lat, lon))
   local ok = start({ mode = "roam", lat = lat, lon = lon })
+  V.preview = false
+  TinyAtlas.Ride.start("ride")
+  TinyAtlas.Ride.mode = "paused"         -- until the start is built
   V.heading = 0
   TinyAtlas.Route = { grade_at = function() return V.roam_grade or 0 end, tag_at = function() return V.roam_tag or "asphalt" end, wind_along = 0 }
   if TinyAtlas.Ride then TinyAtlas.Ride.s = 0 end
@@ -289,6 +337,8 @@ end
 
 local function camera(x, y, z, fx, fy, back)
   local d, h = math.Clamp(cv_back:GetFloat(), 2, 40), math.Clamp(cv_up:GetFloat(), 0.5, 30)
+  -- the menu's fly-along: higher and farther back, so it shows the place rather than the road
+  if V.preview then d, h = 22, 11 end
   local cx, cy, gz
   if V.mode == "ride" then
     local cs = back and V.s + 5 or V.s - d
@@ -318,6 +368,19 @@ local function camera(x, y, z, fx, fy, back)
 end
 
 -- ---- per frame ----
+-- what the frame has opened (model matrices, render targets, the 3D camera), so a frame that fails half way can be
+-- closed again and the next frame (and the game's screens) start clean
+local open = { mt = 0, rt = 0, cam3d = false }
+local function push_mt(m) cam.PushModelMatrix(m); open.mt = open.mt + 1 end
+local function pop_mt() cam.PopModelMatrix(); open.mt = open.mt - 1 end
+local function push_rt(t, w, h) render.PushRenderTarget(t, 0, 0, w, h); open.rt = open.rt + 1 end
+local function pop_rt() render.PopRenderTarget(); open.rt = open.rt - 1 end
+local function close_frame()
+  while open.mt > 0 do pop_mt() end
+  if open.cam3d then cam.End3D(); open.cam3d = false end
+  while open.rt > 0 do pop_rt() end
+  render.FogMode(MATERIAL_FOG_NONE)
+end
 local MT = Matrix()
 local TV = Vector(0, 0, 0)
 local GRAD = Material("gui/gradient_down")
@@ -377,6 +440,7 @@ local function frame(fov)
     if miss == 0 and (V.mode ~= "ride" or V.R.known[1]) then
       V.phase = "riding"
       TinyAtlasJobs.boost_ms = nil
+      if not V.preview and TinyAtlas.Ride.mode == "paused" and not V.paused then TinyAtlas.Ride.mode = "ride" end
       say(string.format("world ready in %.1f s (%d cells built, %.0f ms each on average)", SysTime() - V.started,
         W.stats.built, W.stats.built > 0 and W.stats.ms / W.stats.built or 0))
       V.note_t = SysTime() + 30
@@ -402,7 +466,7 @@ local function frame(fov)
   if px >= 2 then
     rw, rh = math.ceil(ScrW() / px), math.ceil(ScrH() / px)
     pix = V.pixel_target(rw, rh)
-    render.PushRenderTarget(pix.rt, 0, 0, rw, rh)
+    push_rt(pix.rt, rw, rh)
   end
   render.Clear(hz[1], hz[2], hz[3], 255, true, true)
   cam.Start2D()
@@ -412,6 +476,7 @@ local function frame(fov)
   cam.End2D()
   render.ClearDepth()
   cam.Start3D(Vector((cx - O[1]) * U, (cy - O[2]) * U, (cz - O[3]) * U), ang, fov, 0, 0, rw, rh, 4, (L.fog_far + 400) * U)
+  open.cam3d = true
   render.FogMode(MATERIAL_FOG_LINEAR)
   render.FogStart(L.fog_near * U)
   render.FogEnd(L.fog_far * U)
@@ -433,12 +498,12 @@ local function frame(fov)
     if f.handle then
       TV:SetUnpacked((f.ox - O[1]) * U, (f.oy - O[2]) * U, -O[3] * U)
       MT:SetTranslation(TV)
-      cam.PushModelMatrix(MT)
+      push_mt(MT)
       for tex, L2 in pairs(f.handle.tex) do
         render.SetMaterial(ground_material(V.pack, tex))
         for _, m in ipairs(L2) do m:Draw(); draws = draws + 1 end
       end
-      cam.PopModelMatrix()
+      pop_mt()
     end
   end
   render.ClearDepth()
@@ -461,11 +526,11 @@ local function frame(fov)
         if not mat then mat = ground_material(V.pack, tex); render.SetMaterial(mat) end
         TV:SetUnpacked((c.ox - O[1]) * U, (c.oy - O[2]) * U, -O[3] * U)
         MT:SetTranslation(TV)
-        cam.PushModelMatrix(MT)
+        push_mt(MT)
         for _, m in ipairs(L2) do
           if shown(c, m) then m:Draw(); draws = draws + 1 end
         end
-        cam.PopModelMatrix()
+        pop_mt()
       end
     end
   end
@@ -476,7 +541,7 @@ local function frame(fov)
   if edges and pix.dark ~= dark then pix.edge:SetFloat("$c0_w", dark); pix.dark = dark end
   if edges then
     render.FogMode(MATERIAL_FOG_NONE)
-    render.PushRenderTarget(pix.drt, 0, 0, rw, rh)
+    push_rt(pix.drt, rw, rh)
     render.Clear(0, 0, 0, 0, true, true)
     local near2 = (V.EDGE_M + cm) ^ 2
     for _, tex in ipairs(mesh_lib.TEXTURES) do
@@ -488,27 +553,28 @@ local function frame(fov)
           if not set then render.SetMaterial(depth_material(V.pack, tex)); set = true end
           TV:SetUnpacked((c.ox - O[1]) * U, (c.oy - O[2]) * U, -O[3] * U)
           MT:SetTranslation(TV)
-          cam.PushModelMatrix(MT)
+          push_mt(MT)
           for _, m in ipairs(L2) do
             if shown(c, m) then m:Draw(); draws = draws + 1 end
           end
-          cam.PopModelMatrix()
+          pop_mt()
         end
       end
     end
-    render.PopRenderTarget()
+    pop_rt()
     render.FogMode(MATERIAL_FOG_LINEAR)
   end
-  -- the rider (a stand-in until the bike model is in)
-  do
+  -- the rider (a stand-in until the bike model is in); not while the world around it is still being built
+  if V.phase == "riding" then
     render.SetColorMaterial()
     render.DrawBox(Vector((x - O[1]) * U, (y - O[2]) * U, (z - O[3]) * U), Angle(0, math.deg(math.atan2(fy, fx)), 0),
       Vector(-0.9, -0.25, 0) * U, Vector(0.9, 0.25, 1.7) * U, rider_col)
   end
   cam.End3D()
+  open.cam3d = false
   render.FogMode(MATERIAL_FOG_NONE)
   if pix then
-    render.PopRenderTarget()
+    pop_rt()
     render.SetMaterial(edges and pix.edge or pix.mat)
     render.DrawScreenQuad()
   end
@@ -516,48 +582,38 @@ local function frame(fov)
   V.draws, V.tris = draws, tris
 end
 
-surface.CreateFont("TinyAtlas_View", { font = "Arial", size = 22, weight = 700 })
-surface.CreateFont("TinyAtlas_ViewSmall", { font = "Arial", size = 16, weight = 600 })
-
-local function hud()
-  local W = V.W
-  local sw, sh = ScrW(), ScrH()
-  if V.phase == "loading" then
-    local miss, tot = W:missing_near(300)
-    local done, total, label = tot - miss, math.max(tot, 1), "Building the world around you"
-    local bw, bh = math.min(560, sw - 80), 14
-    local bx, by = (sw - bw) / 2, sh / 2 + 18
-    surface.SetDrawColor(0, 0, 0, 150)
-    surface.DrawRect(bx - 2, by - 2, bw + 4, bh + 4)
-    surface.SetDrawColor(255, 255, 255, 230)
-    surface.DrawRect(bx, by, bw * math.min(1, done / total), bh)
-    draw.SimpleTextOutlined(string.format("%s... %d of %d", label, done, total), "TinyAtlas_View", sw / 2, sh / 2 - 8,
-      color_white, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER, 1, color_black)
-    return
-  end
-  local Rd = TinyAtlas.Ride or {}
-  local lines = {
-    string.format("%.1f km/h", (Rd.speed or 0) * 3.6),
-    V.mode == "ride" and string.format("%.2f / %.2f km   grade %.1f %%", V.s / 1000, V.R.length / 1000, V.R:grade(V.s))
-      or string.format("free roam   grade %.1f %%", V.roam_grade or 0),
-  }
-  for i, l in ipairs(lines) do
-    draw.SimpleTextOutlined(l, i == 1 and "TinyAtlas_View" or "TinyAtlas_ViewSmall", 16, 12 + (i - 1) * 26,
-      color_white, TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP, 1, color_black)
-  end
+-- the game owns the whole screen: the world (when one is running, else the sky), then the game's screens over it
+local function sky()
+  local hz, top = LOOK.sky_horizon, LOOK.sky_top
+  render.Clear(hz[1], hz[2], hz[3], 255, true, true)
+  cam.Start2D()
+  surface.SetDrawColor(top[1], top[2], top[3], 255)
+  surface.SetMaterial(GRAD)
+  surface.DrawTexturedRect(0, 0, ScrW(), ScrH() * 0.55)
+  cam.End2D()
 end
+V.sky = sky
 
 hook.Add("RenderScene", "TinyAtlas_View", function(origin, angles, fov)
-  if not V.on or not V.W then return end
-  local ok, err = pcall(frame, fov or 75)
-  if not ok then
-    say("FAILED: drawing the world: " .. tostring(err))
-    ErrorNoHalt("[Tiny Atlas] world frame failed: " .. tostring(err) .. "\n")
-    V.Stop()
-    return
+  local drew = false
+  if V.on and V.W then
+    local ok, err = pcall(frame, fov or 75)
+    if not ok then
+      pcall(close_frame)
+      say("FAILED: drawing the world: " .. tostring(err))
+      ErrorNoHalt("[Tiny Atlas] world frame failed: " .. tostring(err) .. "\n")
+      V.Stop()
+    else drew = true end
   end
+  if not drew then sky() end
   cam.Start2D()
-  hud()
+  if TinyAtlas.Screens then
+    local ok, err = pcall(TinyAtlas.Screens.draw)
+    if not ok then
+      ErrorNoHalt("[Tiny Atlas] screen failed: " .. tostring(err) .. "\n")
+      TinyAtlas.Screens.failed(err)
+    end
+  end
   cam.End2D()
   return true
 end)
@@ -565,41 +621,12 @@ end)
 -- ---- commands ----
 concommand.Add("ta_ride", function(_, _, args)
   if not args[1] then say("routes: " .. table.concat(list_routes(), ", ")) return end
-  V.StartRoute(args[1])
+  if TinyAtlas.Screens then TinyAtlas.Screens.ride(args[1]) else V.RideRoute(args[1]) end
 end)
 concommand.Add("ta_roam", function(_, _, args)
-  V.StartRoam(tonumber(args[1]) or 55.6761, tonumber(args[2]) or 12.5683)
+  local lat, lon = tonumber(args[1]) or 55.6761, tonumber(args[2]) or 12.5683
+  if TinyAtlas.Screens then TinyAtlas.Screens.roam(lat, lon) else V.StartRoam(lat, lon) end
 end)
-concommand.Add("ta_stop", function() V.Stop(); say("stopped") end)
+concommand.Add("ta_stop", function() if TinyAtlas.Screens then TinyAtlas.Screens.go("title") else V.Stop() end; say("stopped") end)
 
--- ---- settings: the look (ta_settings, or F1) ----
-function V.OpenSettings()
-  if IsValid(V.settings_frame) then V.settings_frame:Remove() end
-  local f = vgui.Create("DFrame")
-  V.settings_frame = f
-  f:SetTitle("Tiny Atlas - settings")
-  f:SetSize(380, 190)
-  f:Center()
-  f:MakePopup()
-  local y = 34
-  local function slider(name, label, decimals)
-    local S = V.LOOK_SETTINGS[name]
-    local s = vgui.Create("DNumSlider", f)
-    s:SetPos(14, y); s:SetSize(352, 32)
-    s:SetText(label)
-    s:SetMin(S.min); s:SetMax(S.max); s:SetDecimals(decimals)
-    s:SetConVar(S.cv:GetName())
-    local _, forced = V.look_setting(name, V.pack)
-    local note = vgui.Create("DLabel", f)
-    note:SetPos(18, y + 30); note:SetSize(348, 16)
-    note:SetText(forced and "(the asset pack sets this one)" or "")
-    y = y + 54
-    return s
-  end
-  slider("pixelate", "Pixel size (1 = off)", 0)
-  slider("outlines", "Outlines (0 = off)", 2)
-end
-concommand.Add("ta_settings", function() V.OpenSettings() end)
-hook.Add("PlayerBindPress", "TinyAtlas_Settings", function(_, bind, pressed)
-  if pressed and bind == "gm_showhelp" then V.OpenSettings(); return true end
-end)
+concommand.Add("ta_settings", function() if TinyAtlas.Screens then TinyAtlas.Screens.go("settings") end end)
