@@ -42,7 +42,8 @@ end
 function M.cached(g, F)
   if g.points[1][3] then return route.summary(g) end
   local t = F.P.read(path(F, g))
-  return t and decode(t) or nil
+  local S = t and decode(t)
+  return S and S.length and #S.profile > 1 and S or nil          -- an empty or broken file: work it out again
 end
 
 function M.of(g, F, tick)

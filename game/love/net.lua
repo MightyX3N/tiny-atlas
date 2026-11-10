@@ -11,11 +11,12 @@ local get
 local has_https, https = pcall(require, "https")
 local ffi = require("ffi")
 if has_https then
-  get = function(url, range)
+  get = function(url, range, method, body, headers)
     local h = { ["User-Agent"] = AGENT }
     if range then h["Range"] = range end
-    local code, body = https.request(url, { headers = h })
-    return code, body
+    for k, v in pairs(headers or {}) do h[k] = v end
+    local code, res = https.request(url, { headers = h, method = method, data = body })
+    return code, res
   end
 elseif ffi.os == "Windows" then
   ffi.cdef [[
@@ -41,17 +42,21 @@ elseif ffi.os == "Windows" then
   -- automatic proxy (Windows 8.1+), else the system default
   local session = W.WinHttpOpen(wide(AGENT), 4, nil, nil, 0)
   if session == nil then session = W.WinHttpOpen(wide(AGENT), 0, nil, nil, 0) end
-  get = function(url, range)
+  get = function(url, range, method, body, headers)
     local scheme, host, port, path = url:match("^(https?)://([^/:]+):?(%d*)(.*)$")
     if not host then error("bad URL " .. url) end
     port = tonumber(port) or (scheme == "https" and 443 or 80)
     if path == "" then path = "/" end
     local conn = W.WinHttpConnect(session, wide(host), port, 0)
     if conn == nil then error("WinHttpConnect failed (" .. W.GetLastError() .. ")") end
-    local r = W.WinHttpOpenRequest(conn, wide("GET"), wide(path), nil, nil, nil, scheme == "https" and 0x00800000 or 0)
+    local r = W.WinHttpOpenRequest(conn, wide(method or "GET"), wide(path), nil, nil, nil, scheme == "https" and 0x00800000 or 0)
     if r == nil then W.WinHttpCloseHandle(conn); error("WinHttpOpenRequest failed (" .. W.GetLastError() .. ")") end
-    local hdr = range and wide("Range: " .. range .. "\r\n") or nil
-    local ok = W.WinHttpSendRequest(r, hdr, range and 0xFFFFFFFF or 0, nil, 0, 0, 0) ~= 0 and W.WinHttpReceiveResponse(r, nil) ~= 0
+    local hs = range and ("Range: " .. range .. "\r\n") or ""
+    for k, v in pairs(headers or {}) do hs = hs .. k .. ": " .. v .. "\r\n" end
+    local hdr = hs ~= "" and wide(hs) or nil
+    local data = body and ffi.new("char[?]", #body + 1, body) or nil
+    local ok = W.WinHttpSendRequest(r, hdr, hdr and 0xFFFFFFFF or 0, data, body and #body or 0, body and #body or 0, 0) ~= 0
+      and W.WinHttpReceiveResponse(r, nil) ~= 0
     if not ok then
       local e = W.GetLastError()
       W.WinHttpCloseHandle(r); W.WinHttpCloseHandle(conn)
@@ -72,10 +77,19 @@ elseif ffi.os == "Windows" then
     return tonumber(code[0]), table.concat(parts)
   end
 else
-  get = function(url, range)
+  get = function(url, range, method, body, headers)
     local rh = range and (" -H 'Range: " .. range:gsub("'", "") .. "'") or ""
+    for k, v in pairs(headers or {}) do rh = rh .. " -H '" .. (k .. ": " .. v):gsub("'", "") .. "'" end
+    local tmp
+    if method then rh = rh .. " -X " .. method:gsub("%W", "") end
+    if body then
+      tmp = os.tmpname()
+      local f = io.open(tmp, "wb"); f:write(body); f:close()
+      rh = rh .. " --data-binary @'" .. tmp .. "'"
+    end
     local f = io.popen("curl -sSL -A '" .. AGENT .. "'" .. rh .. " -w '\n%{http_code}' '" .. url:gsub("'", "") .. "'", "r")
     local all = f:read("*a"); f:close()
+    if tmp then os.remove(tmp) end
     local body, code = all:match("^(.*)\n(%d+)$")
     return tonumber(code), body
   end
@@ -83,8 +97,9 @@ end
 while true do
   local r = req:demand()
   if r == "quit" then return end
-  local fine, code, body = pcall(get, r.url, r.range)
+  local fine, code, body = pcall(get, r.url, r.range, r.method, r.body, r.headers)
   if not fine then res:push({ id = r.id, err = tostring(code) })
+  elseif r.method then res:push({ id = r.id, body = body or "", code = code or 0 })     -- HTTP(): every answer, with its code
   elseif not code or code >= 400 or code == 0 then res:push({ id = r.id, err = "HTTP " .. tostring(code) })
   else res:push({ id = r.id, body = body or "" }) end
 end
@@ -114,7 +129,7 @@ function M.update(log)
     local w = M.waiting[r.id]
     M.waiting[r.id] = nil
     if w then
-      if r.err then w.err(r.err) else w.ok(r.body) end
+      if r.err then w.err(r.err) else w.ok(r.body, r.code) end
     end
   end
   for _, t in ipairs(M.workers) do
@@ -130,6 +145,12 @@ M.platform = {
     M.next_id = M.next_id + 1
     M.waiting[M.next_id] = { ok = ok, err = err }
     M.req:push({ id = M.next_id, url = url, range = range })
+  end,
+  -- any request (GMod's HTTP()): method, body, headers; ok(body, code) gets every answer the server gives
+  request = function(t, ok, err)
+    M.next_id = M.next_id + 1
+    M.waiting[M.next_id] = { ok = ok, err = err }
+    M.req:push({ id = M.next_id, url = t.url, method = t.method or "GET", body = t.body, headers = t.headers })
   end,
   read = function(path)
     if not love.filesystem.getInfo(path, "file") then return nil end

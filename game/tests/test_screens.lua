@@ -148,6 +148,29 @@ check("the hills setting changes", GetConVar("ta_trainer_difficulty"):GetFloat()
 press("LEFT")
 F.keys[KEY_ESCAPE] = true; hook.Run("OnPauseMenuShow"); frames(2); F.keys[KEY_ESCAPE] = nil; frames(2)
 
+
+-- your kit
+check("'Your kit'", choose("kit") and S.screen == "kit", S.screen)
+frames(5)
+local RD = TinyAtlas.Rider
+local seed0 = GetConVar("ta_kit_seed"):GetInt()
+check("a kit of its own from the start", seed0 ~= 0, tostring(seed0))
+check("the kit is named", shown(RD.Kit.describe(RD.local_kit()):gsub("^%l", string.upper)))
+check("the rider is drawn", RD.M ~= nil and V.kit_view == true)
+check("'New kit' rolls another", choose("roll") and GetConVar("ta_kit_seed"):GetInt() ~= seed0)
+check("'Last one' goes back", choose("undo") and GetConVar("ta_kit_seed"):GetInt() == seed0)
+for _ = 1, 20 do if UI.focused("k_pattern") then break end; press("DOWN") end
+press("RIGHT"); press("RIGHT")
+local fixed = RD.parse_locks(GetConVar("ta_kit_locks"):GetString()).pattern
+check("a pattern fixed", fixed ~= nil, GetConVar("ta_kit_locks"):GetString())
+choose("roll")
+check("a new kit keeps the fixed pattern", RD.local_kit().pattern == fixed and GetConVar("ta_kit_seed"):GetInt() ~= seed0)
+for _ = 1, 20 do if UI.focused("k_pattern") then break end; press("DOWN") end
+for _ = 1, #RD.Kit.PATTERNS - 1 do press("RIGHT") end
+check("back to any pattern", RD.parse_locks(GetConVar("ta_kit_locks"):GetString()).pattern == nil, GetConVar("ta_kit_locks"):GetString())
+F.keys[KEY_ESCAPE] = true; hook.Run("OnPauseMenuShow"); frames(2); F.keys[KEY_ESCAPE] = nil; frames(2)
+check("Esc back to the title", S.screen == "title" and not V.kit_view, S.screen)
+
 -- roam
 check("'Roam'", choose("roam") and S.screen == "roam", S.screen)
 check("places listed", shown("Copenhagen"))

@@ -56,7 +56,15 @@ function Angle(p, y, r) return setmetatable({ p = p or 0, y = y or 0, r = r or 0
 function AM:Unpack() return self.p, self.y, self.r end
 local MM = {}
 MM.__index = MM
-function Matrix() return setmetatable({ t = { 0, 0, 0 } }, MM) end
+-- t: the translation; r: the 3 x 3 rotation / scale rows, nil when there is none (GMod's Matrix({ rows }) too)
+function Matrix(rows)
+  local m = setmetatable({ t = { 0, 0, 0 } }, MM)
+  if rows then
+    m.t = { rows[1][4], rows[2][4], rows[3][4] }
+    m.r = { rows[1][1], rows[1][2], rows[1][3], rows[2][1], rows[2][2], rows[2][3], rows[3][1], rows[3][2], rows[3][3] }
+  end
+  return m
+end
 function MM:SetTranslation(v) self.t[1], self.t[2], self.t[3] = v.x, v.y, v.z end
 function MM:GetTranslation() return Vector(self.t[1], self.t[2], self.t[3]) end
 function Color(r, g, b, a) return { r = r or 255, g = g or 255, b = b or 255, a = a or 255 } end
@@ -112,6 +120,10 @@ local function run_timers()
     end
   end
 end
+
+-- GMod starts its random numbers somewhere new each time; LuaJIT on its own starts the same way every run
+math.randomseed(os.time() + math.floor((os.clock() % 1) * 1e6))
+for _ = 1, 4 do math.random() end
 
 -- ---- settings (console variables), saved in the save folder ----
 local CVFILE = "cfg/tinyatlas.cfg"
@@ -221,6 +233,17 @@ function http.Fetch(url, ok, fail, headers)
     function(e) if fail then fail(e) end end, headers and headers.Range)
 end
 
+-- GMod's HTTP{ url, method, body, type, headers, success = fn(code, body, headers), failed = fn(reason) }
+function HTTP(t)
+  local h = {}
+  for k, v in pairs(t.headers or {}) do h[k] = v end
+  if t.body and t.type then h["Content-Type"] = t.type end
+  net.platform.request({ url = t.url, method = t.method or "GET", body = t.body, headers = h },
+    function(body, code) if t.success then t.success(code or 200, body, {}) end end,
+    function(e) if t.failed then t.failed(e) end end)
+  return true
+end
+
 -- ---- the gamemode's files ----
 GM = GM or { FolderName = "tinyatlas", Name = "Tiny Atlas" }
 local GMDIR = "gamemodes/tinyatlas/gamemode/"
@@ -292,6 +315,7 @@ function L.update(dt)
   L.dt = dt
   L.frame = L.frame + 1
   net.update(print)
+  if TINYATLAS_LOVE.playit then TINYATLAS_LOVE.playit.update() end
   run_timers()
   hook.Run("Think")
 end
@@ -303,6 +327,13 @@ function L.wheel(y)
 end
 function L.start()
   net.start()
+  -- riding live with others: direct connections (ENet), made reachable through playit.gg when you host
+  TINYATLAS_LOVE.link = require("link")
+  TINYATLAS_LOVE.playit = require("playit")
+end
+function L.quit()
+  if TINYATLAS_LOVE.playit then TINYATLAS_LOVE.playit.disable() end
+  if TINYATLAS_LOVE.link then TINYATLAS_LOVE.link.stop() end
 end
 
 return L

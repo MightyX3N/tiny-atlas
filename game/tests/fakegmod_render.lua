@@ -33,7 +33,14 @@ return function(F, opts)
   color_white, color_black = Color(255, 255, 255), Color(0, 0, 0)
   local MM = {}
   MM.__index = MM
-  function Matrix() return setmetatable({ t = { 0, 0, 0 } }, MM) end
+  function Matrix(rows)
+    local m = setmetatable({ t = { 0, 0, 0 } }, MM)
+    if rows then
+      m.t = { rows[1][4], rows[2][4], rows[3][4] }
+      m.r = { rows[1][1], rows[1][2], rows[1][3], rows[2][1], rows[2][2], rows[2][3], rows[3][1], rows[3][2], rows[3][3] }
+    end
+    return m
+  end
   function MM:SetTranslation(v) self.t = { v.x, v.y, v.z } end
   function MM:GetTranslation() return Vector(self.t[1], self.t[2], self.t[3]) end
 
@@ -61,7 +68,7 @@ return function(F, opts)
       if not (F.render_target and F.render_target.name:find("^tinyatlas_depth_")) then err("DepthWrite drawn outside the depth target") end
       return
     end
-    if F.capture then F.draws[#F.draws + 1] = { mesh = self, mat = cur_mat, t = { t[1], t[2], t[3] } } end
+    if F.capture then F.draws[#F.draws + 1] = { mesh = self, mat = cur_mat, t = { t[1], t[2], t[3] }, r = t.r } end
   end
   local PER = { [MATERIAL_TRIANGLES] = 3, [MATERIAL_QUADS] = 4, [MATERIAL_LINES] = 2 }
   mesh = {}
@@ -153,7 +160,8 @@ return function(F, opts)
   function render.FogColor() end
   function render.DrawBox(pos) F.rider_box = pos end
   -- render targets (the pixel-art filter)
-  RT_SIZE_LITERAL, MATERIAL_RT_DEPTH_SEPARATE, IMAGE_FORMAT_RGB888, IMAGE_FORMAT_RGBA16161616F = 5, 1, 2, 24
+  RT_SIZE_LITERAL, MATERIAL_RT_DEPTH_SEPARATE, MATERIAL_RT_DEPTH_NONE = 5, 1, 2
+  IMAGE_FORMAT_RGB888, IMAGE_FORMAT_RGBA16161616F, IMAGE_FORMAT_RGBA8888 = 2, 24, 0
   local rt_stack = {}
   function GetRenderTargetEx(name, w, h)
     return { name = name, w = w, h = h, GetName = function(self) return self.name end }
@@ -184,7 +192,7 @@ return function(F, opts)
   end
   function cam.Start2D() end
   function cam.End2D() end
-  function cam.PushModelMatrix(m) model_stack[#model_stack + 1] = { m.t[1], m.t[2], m.t[3] } end
+  function cam.PushModelMatrix(m) model_stack[#model_stack + 1] = { m.t[1], m.t[2], m.t[3], r = m.r } end
   function cam.PopModelMatrix()
     if #model_stack == 0 then err("PopModelMatrix with nothing pushed") end
     model_stack[#model_stack] = nil
@@ -282,6 +290,7 @@ return function(F, opts)
   local CV = {}
   CV.__index = CV
   function CreateClientConVar(name, default)
+    if F.convars[name] then return F.convars[name] end        -- like GMod: made once, the same one after that
     local c = setmetatable({ name = name, value = tostring(default) }, CV)
     F.convars[name] = c
     return c

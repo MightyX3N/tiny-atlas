@@ -9,14 +9,14 @@ local R = {}
 
 MATERIAL_TRIANGLES, MATERIAL_QUADS, MATERIAL_LINES = 4, 7, 2
 MATERIAL_FOG_NONE, MATERIAL_FOG_LINEAR = 0, 1
-RT_SIZE_LITERAL, MATERIAL_RT_DEPTH_SEPARATE, MATERIAL_RT_DEPTH_SHARED = 5, 1, 0
+RT_SIZE_LITERAL, MATERIAL_RT_DEPTH_SEPARATE, MATERIAL_RT_DEPTH_SHARED, MATERIAL_RT_DEPTH_NONE = 5, 1, 0, 2
 IMAGE_FORMAT_RGBA8888, IMAGE_FORMAT_RGB888, IMAGE_FORMAT_RGBA16161616F = 0, 2, 24
 TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER, TEXT_ALIGN_RIGHT, TEXT_ALIGN_TOP, TEXT_ALIGN_BOTTOM = 0, 1, 2, 3, 4
 
 -- ---- the world's shader: GMod's UnlitGeneric (texture x vertex colour, cut-outs, linear fog) and DepthWrite ----
 local WORLD = [[
 uniform mat4 u_vp;          // Source units -> clip, GL style
-uniform vec3 u_off;         // the model matrix (a translation)
+uniform mat4 u_model;       // the model matrix
 uniform vec3 u_eye;
 uniform vec2 u_screen;      // the target's size
 uniform vec3 u_fog_col;
@@ -28,7 +28,7 @@ varying float v_dist;
 varying float v_w;
 #ifdef VERTEX
 vec4 position(mat4 tp, vec4 vp) {
-  vec3 w = vp.xyz + u_off;
+  vec3 w = (u_model * vec4(vp.xyz, 1.0)).xyz;
   v_dist = length(w - u_eye);
   vec4 c = u_vp * vec4(w, 1.0);
   v_w = c.w;
@@ -161,7 +161,9 @@ function GetRenderTargetEx(name, w, h, size, depth, flags, rtflags, format)
   t.canvas = lg.newCanvas(w, h, { format = fmt })
   t.canvas:setFilter("nearest", "nearest")
   t.image = t.canvas
-  if depth ~= nil then t.depth = lg.newCanvas(w, h, { format = "depth24" }) end
+  if depth ~= nil and depth ~= MATERIAL_RT_DEPTH_NONE then t.depth = lg.newCanvas(w, h, { format = "depth24" }) end
+  -- clamp s / t (flags 4, 8) or repeat
+  if flags and math.floor(flags / 4) % 2 == 0 then t.canvas:setWrap("repeat", "repeat") end
   targets[name] = t
   return t
 end
@@ -251,7 +253,7 @@ function cam.Start3D(pos, ang, fov, x, y, w, h, znear, zfar)
   local VP = mat_mul(P, V)
   S3.vp, S3.eye, S3.w, S3.h = VP, { ex, ey, ez }, w, h
   S3.in3d = true
-  S3.off = { 0, 0, 0 }
+  S3.off = nil
   S3.stack = {}
   lg.setDepthMode("lequal", true)
   lg.setMeshCullMode("none")
@@ -260,7 +262,7 @@ function cam.Start3D(pos, ang, fov, x, y, w, h, znear, zfar)
   R.shader:send("u_vp", "column", { { VP[1], VP[5], VP[9], VP[13] }, { VP[2], VP[6], VP[10], VP[14] }, { VP[3], VP[7], VP[11], VP[15] }, { VP[4], VP[8], VP[12], VP[16] } })
   R.shader:send("u_eye", S3.eye)
   R.shader:send("u_screen", { w, h })
-  R.shader:send("u_off", S3.off)
+  S3.send_model()
   R.shader:send("u_depth", 0)
   R.shader:send("u_cut", 0)
   S3.send_fog()
@@ -274,15 +276,25 @@ function cam.Start2D() lg.setShader(); lg.setDepthMode("always", false); lg.setC
 function cam.End2D() if S3.in3d then lg.setShader(R.shader); lg.setDepthMode("lequal", true); lg.setColor(1, 1, 1, 1) end end
 function cam.Start(t) if t and t.type == "2D" then cam.Start2D() end end
 function cam.End() cam.End2D() end
+local IDENT = { { 1, 0, 0, 0 }, { 0, 1, 0, 0 }, { 0, 0, 1, 0 }, { 0, 0, 0, 1 } }
+function S3.send_model()
+  local m = S3.off
+  if not m then R.shader:send("u_model", "row", IDENT); return end
+  local r, t = m.r, m.t
+  if r then
+    R.shader:send("u_model", "row", { { r[1], r[2], r[3], t[1] }, { r[4], r[5], r[6], t[2] }, { r[7], r[8], r[9], t[3] }, { 0, 0, 0, 1 } })
+  else
+    R.shader:send("u_model", "row", { { 1, 0, 0, t[1] }, { 0, 1, 0, t[2] }, { 0, 0, 1, t[3] }, { 0, 0, 0, 1 } })
+  end
+end
 function cam.PushModelMatrix(m)
   S3.stack[#S3.stack + 1] = S3.off
-  local t = m.t
-  S3.off = { t[1], t[2], t[3] }
-  if S3.in3d then R.shader:send("u_off", S3.off) end
+  S3.off = { t = { m.t[1], m.t[2], m.t[3] }, r = m.r }
+  if S3.in3d then S3.send_model() end
 end
 function cam.PopModelMatrix()
-  S3.off = table.remove(S3.stack) or { 0, 0, 0 }
-  if S3.in3d then R.shader:send("u_off", S3.off) end
+  S3.off = table.remove(S3.stack)
+  if S3.in3d then S3.send_model() end
 end
 
 -- ---- render.* ----

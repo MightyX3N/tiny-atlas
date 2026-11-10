@@ -179,6 +179,52 @@ local function minimap(W, H)
   UI.text("N", cx + floor(-sn * (rad - 6)), cy - floor(cs * (rad - 6)) - 5, "M1", C.text, "center")
 end
 
+-- the other riders: their names over them, and the nearest ahead and behind as a list (with the gap in time)
+HUD.KIND_COL = { ghost = Color(214, 222, 230), live = Color(140, 220, 120), bot = Color(170, 174, 178) }
+local function others()
+  local OT = TinyAtlas.Others
+  if not OT or not OT.shown then return end
+  for _, n in ipairs(OT.shown) do
+    if n.d < 70 then
+      local sx, sy = V.to_screen(n.x, n.y, n.z + 2.2)
+      if sx and sx > 0 and sx < UI.W and sy > 0 and sy < UI.H then
+        local name = n.e.name or "Rider"
+        local w = floor(UI.textw(name, "M1")) + 8
+        local col = HUD.KIND_COL[n.e.kind] or C.text
+        UI.rect(floor(sx - w / 2), floor(sy) - 9, w, 10, Color(14, 20, 28, 170))
+        UI.text(name, floor(sx), floor(sy) - 9, "M1", col, "center")
+      end
+    end
+  end
+  if V.mode ~= "ride" then return end
+  -- the list: by how far ahead (or behind) they are on the route
+  local rows = {}
+  local live = TinyAtlas.Live and TinyAtlas.Live.riders or {}
+  local function consider(e)
+    if e.s and (e.kind ~= "live" or e.route == V.route_id) then rows[#rows + 1] = { e = e, gap = e.s - (V.s or 0) } end
+  end
+  for _, e in ipairs(OT.list) do consider(e) end
+  for _, e in pairs(live) do consider(e) end
+  if #rows == 0 then return end
+  table.sort(rows, function(a, b) return abs(a.gap) < abs(b.gap) end)
+  while #rows > 5 do table.remove(rows) end
+  table.sort(rows, function(a, b) return a.gap > b.gap end)
+  local x, y = 10, 70
+  local v = max(3, Ride.speed or 0)
+  UI.panel(x, y, 112, #rows * 11 + 6)
+  for i, r in ipairs(rows) do
+    local ry = y + 3 + (i - 1) * 11
+    local col = HUD.KIND_COL[r.e.kind] or C.text
+    UI.rect(x + 4, ry + 3, 3, 3, col)
+    UI.text(UI.fit(r.e.name or "Rider", "M1", 64), x + 10, ry, "M1", C.text)
+    local gap
+    if r.e.finished then gap = "done"
+    elseif abs(r.gap) < 1 then gap = "with you"
+    else gap = string.format("%s%d s", r.gap > 0 and "+" or "-", floor(abs(r.gap) / v + 0.5)) end
+    UI.text(gap, x + 108, ry, "M1", r.gap > 0 and C.sign or C.dim, "right")
+  end
+end
+
 function HUD.draw()
   local W, H = UI.W, UI.H
   local st = Ride.state or {}
@@ -207,6 +253,7 @@ function HUD.draw()
     UI.text(tostring(c[1]), cx, ly + 38, "M2", C.lcdInk)
     UI.text(c[2], cx, ly + 54, "M1", C.lcdInk)
   end
+  others()
   minimap(W, H)
   if V.mode == "roam" then UI.stext("A / D steer", floor(W / 2), H - 16, "M1", C.dim, "center") end
 end

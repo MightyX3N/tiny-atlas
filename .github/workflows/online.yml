@@ -1,0 +1,54 @@
+# The online service (online/): tested against a local copy, then deployed to Cloudflare (Workers + D1).
+# Runs when something in online/ changes on main, or by hand from the Actions tab.
+# Needs two repository secrets: CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID.
+name: Online service
+
+on:
+  push:
+    branches: [main]
+    paths: ["online/**", ".github/workflows/online.yml"]
+  workflow_dispatch:
+
+concurrency:
+  group: online-deploy
+  cancel-in-progress: false
+
+jobs:
+  test-and-deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: online
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: online/package-lock.json
+
+      - run: npm ci
+
+      - name: Test against a local copy
+        run: |
+          npx wrangler d1 execute tinyatlas --local --file=schema.sql
+          npx wrangler dev --port 8787 --ip 127.0.0.1 > dev.log 2>&1 &
+          for i in $(seq 1 60); do curl -s http://127.0.0.1:8787/ && break; sleep 1; done
+          node test/api_test.mjs http://127.0.0.1:8787
+
+      - name: Make sure the database has every table (safe to repeat)
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: online
+          command: d1 execute tinyatlas --remote --file=schema.sql
+
+      - name: Deploy
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: online
+          command: deploy

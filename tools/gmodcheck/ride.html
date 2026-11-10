@@ -129,9 +129,18 @@ for (let fi = from; fi < to; fi++) {
   far.background = new THREE.Color(sky);
   while (near.children.length) near.remove(near.children[0]);
   const clear = f.clear || 0;
-  for (let i = 0; i < f.draws.length; i++) { const d = f.draws[i]; const o = await obj(d[0]); o.position.set(d[1], d[2], d[3]); (i < clear ? far : near).add(o); }
+  for (let i = 0; i < f.draws.length; i++) {
+    const d = f.draws[i];
+    let o = await obj(d[0]);
+    if (d.length > 4) {      // a turned part (the rider): its own copy with the full matrix
+      o = o.clone();
+      o.matrixAutoUpdate = false;
+      o.matrix.set(d[4], d[5], d[6], d[1], d[7], d[8], d[9], d[2], d[10], d[11], d[12], d[3], 0, 0, 0, 1);
+    } else o.position.set(d[1], d[2], d[3]);
+    (i < clear ? far : near).add(o);
+  }
   const [rx, ry, rz] = f.rider, hd = f.heading * Math.PI / 180;
-  riderBox.position.set(rx, ry, rz + 0.85 * U); riderBox.rotation.set(0, 0, hd); near.add(riderBox);
+  if (!f.draws.some(d => d.length > 4)) { riderBox.position.set(rx, ry, rz + 0.85 * U); riderBox.rotation.set(0, 0, hd); near.add(riderBox); }
   near.background = null;
   far.fog = fog; near.fog = fog;
   const c = f.camera, p = c.ang[0] * Math.PI / 180, y = c.ang[1] * Math.PI / 180;

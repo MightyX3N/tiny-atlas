@@ -46,8 +46,8 @@ function V.look_setting(name, pack)
   if S.whole then v = math.floor(v + 0.5) end
   return v, type(rule) == "table" and rule.force ~= nil
 end
-local cv_back = CreateClientConVar("ta_cam_back", "9", true, false, "Camera distance behind the rider (m)")
-local cv_up = CreateClientConVar("ta_cam_up", "4", true, false, "Camera height above the rider (m)")
+local cv_back = CreateClientConVar("ta_cam_back", "6", true, false, "Camera distance behind the rider (m)")
+local cv_up = CreateClientConVar("ta_cam_up", "2.5", true, false, "Camera height above the rider (m)")
 
 local function say(msg) print("[Tiny Atlas] " .. msg) end
 V.say = say
@@ -61,10 +61,11 @@ local function load_pack(id)
   -- (<id>_bld.lua, tools/packs/pixel_buildings.py); their textures join the pack's
   if not pack.extras_loaded then
     pack.extras_loaded = true
-    for _, extra in ipairs({ "_trees3d", "_bld", "_ground" }) do
+    for _, extra in ipairs({ "_trees3d", "_bld", "_ground", "_rider" }) do
       local okt, t3 = pcall(include, "tinyatlas/packs/" .. id .. extra .. ".lua")
       if okt and type(t3) == "table" then
         if extra == "_trees3d" then pack.trees3d = t3 end
+        if extra == "_rider" then pack.rider = t3 end
         pack.alphatest = pack.alphatest or {}
         for tex, def in pairs(t3.textures or {}) do
           if not pack.ground[tex] then pack.ground[tex] = { def.file } end
@@ -183,6 +184,8 @@ end
 local read_gpx
 function V.read_gpx(name) return read_gpx(name) end
 function read_gpx(name)
+  -- shared routes (downloaded, or yours as shared): "shared/<route id>"
+  if name:sub(1, 7) == "shared/" then return file.Read("tinyatlas/" .. name .. ".gpx", "DATA") end
   local text = file.Read("tinyatlas/gpx/" .. name .. ".gpx", "DATA") or file.Read("tinyatlas/gpx/" .. name, "DATA")
   if not text then text = file.Read("gamemodes/" .. (GM or GAMEMODE).FolderName .. "/routes/" .. name .. ".gpx", "GAME") end
   return text
@@ -194,6 +197,9 @@ function V.list_routes()
     out[#out + 1] = { id = f:gsub("%.gpx$", ""), own = false }
   end
   for _, f in ipairs(file.Find("tinyatlas/gpx/*.gpx", "DATA") or {}) do out[#out + 1] = { id = f:gsub("%.gpx$", ""), own = true } end
+  for _, f in ipairs(file.Find("tinyatlas/shared/*.gpx", "DATA") or {}) do
+    out[#out + 1] = { id = "shared/" .. f:gsub("%.gpx$", ""), own = false, shared = true }
+  end
   return out
 end
 local function list_routes()
@@ -204,7 +210,8 @@ end
 
 -- ---- start / stop ----
 function V.Stop()
-  V.route_name, V.preview = nil, false
+  V.route_name, V.preview, V.route_id = nil, false, nil
+  if TinyAtlas.Others then TinyAtlas.Others.stop() end
   if TinyAtlas.Ride then TinyAtlas.Ride.mode = "off" end
   if V.W then V.W:shutdown() end
   V.W, V.on = nil, false
@@ -286,11 +293,12 @@ function V.StartRoute(name)
   local tmp = world.new({ fetch = TinyAtlasFetch, lat = lat, lon = lon, tile_metres = 3.3, unit = U,
     make = function() end, free = function() end })
   local R = route.new(g.points, tmp)
+  local rid = route.id(g.points)
   say(string.format("riding %s (%.2f km): building the world around the start...", g.name or name, R.length / 1000))
   TinyAtlas.Route = R
   if TinyAtlas.Ride then TinyAtlas.Ride.s = 0 end
   local ok = start({ mode = "ride", R = R, lat = lat, lon = lon })
-  V.route_name, V.route_title = name, g.name or name
+  V.route_name, V.route_title, V.route_id = name, g.name or name, rid
   return ok
 end
 
@@ -337,15 +345,23 @@ end
 
 local function camera(x, y, z, fx, fy, back)
   local d, h = math.Clamp(cv_back:GetFloat(), 2, 40), math.Clamp(cv_up:GetFloat(), 0.5, 30)
-  -- the menu's fly-along: higher and farther back, so it shows the place rather than the road
+  -- the menu's fly-along: higher and farther back, so it shows the place rather than the road; the kit screen
+  -- looks at the rider from in front, close
   if V.preview then d, h = 22, 11 end
+  local ahead = 5
+  local kit = V.preview and V.kit_view
+  if kit then h, back, ahead = 1.0, true, 3.4 end
   local cx, cy, gz
-  if V.mode == "ride" then
-    local cs = back and V.s + 5 or V.s - d
+  if kit then
+    -- in front and a little to the side (the rider's left), looking back at the rider
+    cx, cy = x + fx * ahead * 0.85 - fy * ahead * 0.5, y + fy * ahead * 0.85 + fx * ahead * 0.5
+    gz = V.W:height_at(cx, cy) or z
+  elseif V.mode == "ride" then
+    local cs = back and V.s + ahead or V.s - d
     cx, cy, gz = V.R:pos(cs)
-    if cs < 0 or cs > V.R.length then cx, cy = x - fx * (back and -5 or d), y - fy * (back and -5 or d) end   -- start / end
+    if cs < 0 or cs > V.R.length then cx, cy = x - fx * (back and -ahead or d), y - fy * (back and -ahead or d) end   -- start / end
     -- in a sharp corner the route point behind is right beside the rider: step back along the heading instead
-    local want = back and 5 or d
+    local want = back and ahead or d
     local dx, dy = x - cx, y - cy
     if math.sqrt(dx * dx + dy * dy) < want * 0.75 then
       local k = back and -want or want
@@ -353,7 +369,7 @@ local function camera(x, y, z, fx, fy, back)
       gz = V.W:height_at(cx, cy) or gz
     end
   else
-    local k = back and -5 or d
+    local k = back and -ahead or d
     cx, cy = x - fx * k, y - fy * k
     gz = V.W:height_at(cx, cy) or z
   end
@@ -361,6 +377,10 @@ local function camera(x, y, z, fx, fy, back)
   local lfx, lfy = fx, fy
   if back then lfx, lfy = -fx, -fy end
   local lx, ly, lz = x + lfx * 10, y + lfy * 10, z + 0.6
+  if kit then
+    -- the rider a little left of the middle (the kit's panel is on the right)
+    lx, ly, lz = x - fy * 0.55, y + fx * 0.55, z + 0.85
+  end
   local dx, dy, dz = lx - cx, ly - cy, lz - cz
   local hd = math.sqrt(dx * dx + dy * dy)
   return cx, cy, cz, Angle(-math.deg(math.atan2(dz, hd)), math.deg(math.atan2(dy, dx)), 0),
@@ -384,7 +404,6 @@ end
 local MT = Matrix()
 local TV = Vector(0, 0, 0)
 local GRAD = Material("gui/gradient_down")
-local rider_col = Color(200, 57, 47)
 
 local function status_note()
   local W = V.W
@@ -418,6 +437,16 @@ end
 local function frame(fov)
   local W = V.W
   local dt = RealFrameTime()
+  if TinyAtlas.Rider then
+    TinyAtlas.Rider.paint_kits()
+    local st = TinyAtlas.Ride.state or {}
+    local Rd = TinyAtlas.Ride
+    -- the legs go round with the cadence; on the menu's fly-along, an easy 80 rpm
+    local cad = Rd.mode == "auto" and 80 or (Rd.mode == "ride" and (st.cadence or 0) or 0)
+    if (Rd.speed or 0) < 0.3 then cad = 0 end
+    TinyAtlas.Rider.update(dt, { speed = Rd.speed or 0, cadence = cad })
+  end
+  if TinyAtlas.Others then TinyAtlas.Others.update(dt) end
   V.t = V.t + dt
   V.frames = V.frames + 1
   if V.phase == "riding" then
@@ -535,6 +564,28 @@ local function frame(fov)
     end
   end
   for _, c in ipairs(vis) do tris = tris + c.handle.tris end
+  -- the rider on the bike (or running); not while the world around it is still being built
+  local RD = TinyAtlas.Rider
+  local rider
+  if V.phase == "riding" and RD and V.pack.rider then
+    local st = TinyAtlas.Ride.state or {}
+    local running = st.kind == "treadmill" or st.kind == "footpod"
+    local kit_mat = RD.kit_material(RD.local_kit())
+    rider = { pack = V.pack, x = x, y = y, z = z, fx = fx, fy = fy, O = O, U = U, running = running,
+      grade = V.mode == "ride" and V.R:grade(V.s) or (V.roam_grade or 0),
+      mat = function(kind) return kind == "bike" and ground_material(V.pack, "rider_bike") or kit_mat end }
+    draws = draws + RD.draw(rider)
+  end
+  -- the other riders: ghosts, riders riding live with you, computer riders
+  local OT = TinyAtlas.Others
+  local others
+  if V.phase == "riding" and RD and V.pack.rider and OT and not V.preview then
+    local bike = ground_material(V.pack, "rider_bike")
+    others = { pack = V.pack, O = O, U = U, mat = function(kind, e) return kind == "bike" and bike or RD.kit_material(e.kit or RD.local_kit()) end }
+    draws = draws + OT.draw(others)
+  end
+  -- the camera, for the name tags over the riders (V.to_screen)
+  V.cam = { x = cx, y = cy, z = cz, p = ang.p, yaw = ang.y, fov = fov, aspect = rw / rh }
   -- the outlines' depth pass: the near cells again, each pixel's distance (nothing there: 0)
   local dark = V.look_setting("outlines", V.pack)
   local edges = pix and pix.drt and dark > 0
@@ -561,14 +612,14 @@ local function frame(fov)
         end
       end
     end
+    if rider then
+      local dm = depth_material(V.pack, "rider")
+      rider.mat = function() return dm end
+      draws = draws + RD.draw(rider)
+      if others then others.mat = function() return dm end; draws = draws + OT.draw(others) end
+    end
     pop_rt()
     render.FogMode(MATERIAL_FOG_LINEAR)
-  end
-  -- the rider (a stand-in until the bike model is in); not while the world around it is still being built
-  if V.phase == "riding" then
-    render.SetColorMaterial()
-    render.DrawBox(Vector((x - O[1]) * U, (y - O[2]) * U, (z - O[3]) * U), Angle(0, math.deg(math.atan2(fy, fx)), 0),
-      Vector(-0.9, -0.25, 0) * U, Vector(0.9, 0.25, 1.7) * U, rider_col)
   end
   cam.End3D()
   open.cam3d = false
@@ -580,6 +631,26 @@ local function frame(fov)
   end
   V.px = px
   V.draws, V.tris = draws, tris
+end
+
+-- where a point in the world (metres) is on the screen, in the UI's pixels (nil when behind the camera)
+function V.to_screen(x, y, z)
+  local c = V.cam
+  if not c then return nil end
+  local p, yw = math.rad(-c.p), math.rad(c.yaw)
+  local fx, fy, fz = math.cos(p) * math.cos(yw), math.cos(p) * math.sin(yw), math.sin(p)
+  local rx, ry = math.sin(yw), -math.cos(yw)                      -- to the right
+  local ux, uy, uz = -math.sin(p) * math.cos(yw), -math.sin(p) * math.sin(yw), math.cos(p)
+  local dx, dy, dz = x - c.x, y - c.y, z - c.z
+  local f = dx * fx + dy * fy + dz * fz
+  if f < 0.5 then return nil end
+  local r, u = dx * rx + dy * ry, dx * ux + dy * uy + dz * uz
+  -- Source's field of view is the horizontal one of a 4:3 screen
+  local th = math.tan(math.rad(c.fov / 2)) * 0.75
+  local tw = th * c.aspect
+  local UI = TinyAtlas.UI
+  local sx, sy = (0.5 + r / f / tw / 2) * ScrW(), (0.5 - u / f / th / 2) * ScrH()
+  return (sx - (UI.ox or 0)) / (UI.s or 1), (sy - (UI.oy or 0)) / (UI.s or 1), f
 end
 
 -- the game owns the whole screen: the world (when one is running, else the sky), then the game's screens over it
@@ -608,9 +679,10 @@ hook.Add("RenderScene", "TinyAtlas_View", function(origin, angles, fov)
   if not drew then sky() end
   cam.Start2D()
   if TinyAtlas.Screens then
-    local ok, err = pcall(TinyAtlas.Screens.draw)
+    local ok, err = xpcall(TinyAtlas.Screens.draw, function(e) return { e = e, tb = debug.traceback("", 2) } end)
     if not ok then
-      ErrorNoHalt("[Tiny Atlas] screen failed: " .. tostring(err) .. "\n")
+      ErrorNoHalt("[Tiny Atlas] screen failed: " .. tostring(err.e) .. "\n" .. tostring(err.tb):sub(1, 600) .. "\n")
+      err = err.e
       TinyAtlas.Screens.failed(err)
     end
   end

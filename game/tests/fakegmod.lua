@@ -73,8 +73,10 @@ return function(DATA, GMDIR)
   }
   net = {
     Start = function(n) F.net_msg = { name = n } end, WriteBool = function() end, WriteFloat = function() end,
-    WriteUInt = function() end, WriteString = function() end,
-    SendToServer = function() F.nets[#F.nets + 1] = F.net_msg end, Receive = function() end,
+    WriteUInt = function() end, WriteString = function(t) F.net_msg.text = t end,
+    SendToServer = function() F.nets[#F.nets + 1] = F.net_msg end,
+    Receive = function(name, fn) F.net_recv = F.net_recv or {}; F.net_recv[name] = fn end,
+    ReadString = function() return table.remove(F.net_in or {}, 1) or "" end,
   }
   concommand = { Add = function() end }
   input = { IsKeyDown = function(k) return F.keys[k] == true end,
@@ -100,8 +102,28 @@ return function(DATA, GMDIR)
   function include(p) local f = assert(loadfile(GMDIR .. "/" .. p)); return f() end
   GM = {}
 
+  -- GMod's HTTP{}: done with curl on the next tick (answers come back a frame later, like in the game)
+  F.http = {}
+  F.http_log = {}
+  function HTTP(t)
+    F.http[#F.http + 1] = t
+    return true
+  end
+  local function run_http(t)
+    local tmp = os.tmpname()
+    local hdr = t.type and (" -H 'Content-Type: " .. t.type .. "'") or ""
+    if t.body then local f = io.open(tmp, "wb"); f:write(t.body); f:close(); hdr = hdr .. " --data-binary @" .. tmp end
+    local p = io.popen("curl -s -m 20 -X " .. (t.method or "GET") .. hdr .. " -w '\n%{http_code}' '" .. t.url .. "'")
+    local all = p:read("*a"); p:close(); os.remove(tmp)
+    local body, code = all:match("^(.*)\n(%d+)$")
+    F.http_log[#F.http_log + 1] = { url = t.url, code = tonumber(code) }
+    if code and tonumber(code) > 0 then if t.success then t.success(tonumber(code), body, {}) end
+    elseif t.failed then t.failed("unsuccessful") end
+  end
   function F.tick(dt)
     F.dt = dt; F.t = F.t + dt
+    local q = F.http; F.http = {}
+    for _, t in ipairs(q) do run_http(t) end
     for _, tm in pairs(F.timers) do
       while F.t >= tm.next do tm.next = tm.next + tm.delay; tm.fn() end
     end

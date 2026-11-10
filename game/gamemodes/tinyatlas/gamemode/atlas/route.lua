@@ -71,6 +71,55 @@ function M.summary(g)
   return { length = D[#P], climb = climb, low = heights and lo or 0, high = heights and hi or 0, profile = prof, heights = heights }
 end
 
+-- the route's ID: the same file gives the same ID on every computer (and on the online service, which works it out
+-- the same way), so riders of the same route share its leaderboard and ghosts. Every point's latitude and
+-- longitude to 5 decimals (about a metre), hashed twice (two bases, mod 2^31 - 1): 16 hex digits.
+function M.id(points)
+  local h1, h2, P = 7, 11, 2147483647
+  local byte, fmt = string.byte, string.format
+  for i = 1, #points do
+    local s = fmt("%.5f,%.5f;", points[i][1], points[i][2])
+    for k = 1, #s do
+      local c = byte(s, k)
+      h1 = (h1 * 131 + c) % P
+      h2 = (h2 * 1000003 + c) % P
+    end
+  end
+  return fmt("%08x%08x", h1, h2)
+end
+
+-- the points without the first and last `metres` (where a recorded ride starts and ends: often someone's home),
+-- for sharing a route
+function M.trim(points, metres)
+  local D = { 0 }
+  for i = 2, #points do
+    local p, q = points[i], points[i - 1]
+    local k = 111320 * math.cos(math.rad(p[1]))
+    D[i] = D[i - 1] + sqrt(((p[1] - q[1]) * 110540) ^ 2 + ((p[2] - q[2]) * k) ^ 2)
+  end
+  local total = D[#points]
+  if total < metres * 4 then return points end                 -- too short to cut: keep it whole
+  local out = {}
+  for i = 1, #points do
+    if D[i] >= metres and D[i] <= total - metres then out[#out + 1] = points[i] end
+  end
+  return out
+end
+
+-- a GPX file of just the track (no times, heart rate, device): what is shared
+function M.to_gpx(name, points)
+  local esc = function(s) return (tostring(s or ""):gsub("[<>&\"]", { ["<"] = "&lt;", [">"] = "&gt;", ["&"] = "&amp;", ['"'] = "&quot;" })) end
+  local out = { '<?xml version="1.0" encoding="UTF-8"?>',
+    '<gpx version="1.1" creator="Tiny Atlas" xmlns="http://www.topografix.com/GPX/1/1">',
+    "<trk><name>" .. esc(name) .. "</name><trkseg>" }
+  for _, p in ipairs(points) do
+    if p[3] then out[#out + 1] = string.format('<trkpt lat="%.6f" lon="%.6f"><ele>%.1f</ele></trkpt>', p[1], p[2], p[3])
+    else out[#out + 1] = string.format('<trkpt lat="%.6f" lon="%.6f"></trkpt>', p[1], p[2]) end
+  end
+  out[#out + 1] = "</trkseg></trk></gpx>"
+  return table.concat(out, "\n")
+end
+
 function M.new(points, world)
   local R = setmetatable({ world = world, S = {}, X = {}, Y = {}, GX = {}, GY = {}, Z = {}, ZR = {}, known = {}, surf = {}, n = 0,
     wind_along = 0, s = 0 }, { __index = M })

@@ -1,5 +1,6 @@
 -- The standalone played through like a player, with the keys: the title screen and its route riding by itself, the
--- route list, a ride (keys, the ride screen, pause, settings, results), my routes, trainer, roam with steering.
+-- route list, a ride (keys, the ride screen with the other riders, pause, settings, results), my routes, trainer, shared
+-- routes and friends (offline here), your kit, roam with steering.
 -- Screenshots of every screen go to the out folder. Ends with OK or FAILED.
 local L, R = ...
 local T = dofile(os.getenv("TA_TEST_LIB"))(L, R, os.getenv("TA_TEST_OUT"))
@@ -25,6 +26,7 @@ T.shot("03_loading")
 T.until_(function() return T.screen() == "ride" end, 180, "the ride to start")
 check("riding Rold Skov", V.route_name == "rold-skov" and Ride.mode == "ride")
 T.hold("W", true); T.seconds(5); T.hold("LSHIFT", true); T.seconds(3); T.hold("LSHIFT", false); T.hold("W", false)
+check("riders on the road with you (computer riders: no online service here)", #TinyAtlas.Others.list > 0, #TinyAtlas.Others.list)
 check("the keys ride", Ride.s > 20 and Ride.stats.time > 7, string.format("%.0f m in %.1f s", Ride.s, Ride.stats.time))
 T.shot("04_ride")
 esc(); check("pause", T.screen() == "pause", T.screen()); T.shot("05_pause")
@@ -39,6 +41,12 @@ T.choose("finish"); check("results", T.screen() == "results", T.screen()); T.sho
 T.choose("menu"); check("main menu", T.screen() == "title", T.screen())
 T.choose("my"); T.frames(10); check("my routes", T.screen() == "myroutes", T.screen()); T.shot("09_myroutes"); esc()
 T.choose("trainer"); T.frames(5); check("trainer", T.screen() == "trainer", T.screen()); T.shot("10_trainer"); esc()
+T.choose("shared"); T.frames(5); check("shared routes", T.screen() == "shared", T.screen()); T.shot("10d_shared"); esc()
+T.choose("friends"); T.frames(5); check("friends", T.screen() == "friends", T.screen()); T.shot("10e_friends"); esc()
+T.choose("kit"); T.frames(10); check("your kit", T.screen() == "kit", T.screen()); T.shot("10b_kit")
+local k0 = GetConVar("ta_kit_seed"):GetInt()
+T.choose("roll"); T.frames(10); check("a new kit", GetConVar("ta_kit_seed"):GetInt() ~= k0); T.shot("10c_kit_new")
+esc()
 T.choose("roam"); T.frames(5); check("roam", T.screen() == "roam", T.screen()); T.shot("11_roam")
 T.choose("places:2")
 T.until_(function() return T.screen() == "ride" end, 180, "roam to start")

@@ -61,6 +61,11 @@ function M:global_of(lat, lon)
   local fy = (1 - math.log(math.tan(lr) + 1 / cos(lr)) / math.pi) / 2
   return fx * WORLD, fy * WORLD
 end
+function M:latlon_of_global(gx, gy)
+  local lon = gx / WORLD * 360 - 180
+  local n = math.pi * (1 - 2 * gy / WORLD)
+  return math.deg(math.atan(0.5 * (math.exp(n) - math.exp(-n)))), lon
+end
 function M:metres_of(gx, gy) return (gx - self.GX0) * self.k, -(gy - self.GY0) * self.k end
 function M:global_of_metres(x, y) return self.GX0 + x / self.k, self.GY0 - y / self.k end
 function M:tag_of(surf) return mesh.TEXTURE[surf or "road"] or "asphalt" end

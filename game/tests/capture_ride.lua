@@ -119,7 +119,13 @@ while s <= length + 0.01 and fcount < MAXF do
   local c = F.camera
   local parts = {}
   for _, d in ipairs(F.draws) do
-    parts[#parts + 1] = string.format("[%d,%.2f,%.2f,%.2f]", mesh_id(d.mesh, d.mat), d.t[1], d.t[2], d.t[3])
+    if d.r then     -- turned (the rider): the 3 x 3 rows after the position
+      local r = d.r
+      parts[#parts + 1] = string.format("[%d,%.2f,%.2f,%.2f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f]", mesh_id(d.mesh, d.mat),
+        d.t[1], d.t[2], d.t[3], r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8], r[9])
+    else
+      parts[#parts + 1] = string.format("[%d,%.2f,%.2f,%.2f]", mesh_id(d.mesh, d.mat), d.t[1], d.t[2], d.t[3])
+    end
   end
   local rb = F.rider_box or { x = 0, y = 0, z = 0 }
   frames[#frames + 1] = string.format('{"s":%.1f,"camera":{"pos":[%.2f,%.2f,%.2f],"ang":[%.4f,%.4f,%.4f],"fov":%.1f},"rider":[%.2f,%.2f,%.2f],"heading":%.2f,"grade":%.2f,"clear":%d,"px":%d,"draws":[%s]}',

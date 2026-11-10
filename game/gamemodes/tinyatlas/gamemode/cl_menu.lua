@@ -38,7 +38,7 @@ function S.route_info(id)
   if not text then r.state = "failed"; r.err = "file not found"; return r end
   local g, err = route_lib.parse_gpx(text)
   if not g then r.state = "failed"; r.err = err; return r end
-  r.title, r.gpx = g.name or id, g
+  r.title, r.gpx, r.rid = g.name or id, g, route_lib.id(g.points)
   local sum = profile_lib.cached(g, TinyAtlasFetch)
   if sum then r.sum, r.state = sum, "ready"
   else
@@ -178,26 +178,30 @@ function draw.title()
   UI.fade_left(190, 0.62)
   title_block()
   local items = {
-    { "ride", "Ride a route" }, { "roam", "Roam" }, { "my", "My routes" }, { "trainer", "Trainer" },
-    { "settings", "Settings" }, { "quit", "Quit" },
+    { "ride", "Ride a route" }, { "shared", "Shared routes" }, { "roam", "Roam" }, { "my", "My routes" },
+    { "friends", "Friends" }, { "kit", "Your kit" }, { "trainer", "Trainer" }, { "settings", "Settings" }, { "quit", "Quit" },
   }
-  local y = 76
+  local y = 70
   for _, it in ipairs(items) do
     if UI.menu_item(it[1], it[2], 24, y, 132) then
       if it[1] == "ride" then S.go("routes")
       elseif it[1] == "roam" then S.go("roam")
       elseif it[1] == "my" then S.go("myroutes")
       elseif it[1] == "trainer" then S.go("trainer")
+      elseif it[1] == "kit" then S.go("kit")
+      elseif it[1] == "shared" then S.go("shared")
+      elseif it[1] == "friends" then S.go("friends")
       elseif it[1] == "settings" then S.back_to = "title"; S.go("settings")
       elseif it[1] == "quit" then S.quit() end
     end
-    y = y + (UI.focused(it[1]) and 25 or 21)
+    y = y + 20
   end
   -- the chosen route, and starting it
   local r = S.route_info(cv_last:GetString())
   local px, pw = UI.W - 218, 202
   route_card(r, px, 64, pw)
   if r and r.state ~= "failed" and UI.button("start", "Start ride", px + pw - 86, 200, 86, "go") then S.ride(r.id) end
+  S.board_line(r, px, 224, pw)
   if S.error then UI.text("Something went wrong: " .. S.error:sub(1, 70), 18, UI.H - 30, "M1", C.red) end
   hint("Arrow keys or mouse  -  Enter to choose")
   trainer_chip()
@@ -225,13 +229,21 @@ local function routes_screen(own)
       UI.text(km .. " " .. ku, x + w - 14, y + 6, "M1", f and C.ink or C.dim, "right")
     end
   end)
-  -- the focused route's card
+  -- the focused route's card (and the last one focused while the focus is on its buttons)
   local fr
-  for i, r in ipairs(list) do if UI.focused((own and "own" or "routes") .. ":" .. i) then fr = r end end
+  local key = own and "own" or "routes"
+  for i, r in ipairs(list) do if UI.focused(key .. ":" .. i) then fr = r end end
+  S.picked = S.picked or {}
+  if fr then S.picked[key] = fr.id end
+  if not fr then for _, r in ipairs(list) do if r.id == S.picked[key] then fr = r end end end
   fr = fr or list[1]
   if fr then
     route_card(fr, UI.W - 218, 64, 202, "Route")
     if UI.button("start", "Start ride", UI.W - 104, 200, 86, "go") then S.ride(fr.id) end
+    if own and fr.rid and TinyAtlas.Online.enabled() and UI.button("share", "Share", UI.W - 218, 200, 70) then
+      S.share_route = fr; S.share_state = nil; S.go("share")
+    end
+    S.board_line(fr, UI.W - 218, 224, 202)
   end
   if chosen then S.ride(list[chosen].id) end
   back_button("title")
@@ -309,6 +321,94 @@ function draw.trainer()
   trainer_chip()
 end
 
+-- ---- your kit: made from a number (roll a new one), parts of it fixed, your rider's looks ----
+local function kit_cv(name, v)
+  local c = TinyAtlas.Rider.cv[name]
+  RunConsoleCommand(c:GetName(), tostring(v)); c:SetString(tostring(v))
+end
+local function cap(n) return (n:gsub("_", " "):gsub("^%l", string.upper)) end
+local function colour_name(c)
+  if not c then return nil end
+  if c.name then return c.name end
+  for _, e in ipairs(TinyAtlas.Rider.Kit.COLOURS) do if e[2] == c[1] and e[3] == c[2] and e[4] == c[3] then return e[1] end end
+end
+-- a part of the kit, fixed (a choice) or left to the kit's number ("any", showing what the number gives now)
+local function kit_part(id, label, key, list, K, locks, x, y, w)
+  local cur = K[key]
+  local now = type(cur) == "table" and (colour_name(cur) or "custom") or tostring(cur)
+  local value = locks[key] ~= nil and (type(locks[key]) == "table" and (colour_name(locks[key]) or "custom") or tostring(locks[key])) or "any"
+  local choices = { false }
+  for _, c in ipairs(list) do
+    choices[#choices + 1] = { c[1], cap(c[2] or c[1]) }
+    if c[1] == now then now = c[2] or c[1] end
+  end
+  choices[1] = { "any", "Any: " .. cap(now) }
+  local v, ch = UI.setting(id, label, value, choices, x, y, w)
+  if ch then
+    if v == "any" then locks[key] = nil
+    elseif key == "pattern" or key == "sleeves" then locks[key] = v
+    else
+      for _, e in ipairs(TinyAtlas.Rider.Kit.COLOURS) do if e[1] == v then locks[key] = { e[2], e[3], e[4] } end end
+    end
+    kit_cv("locks", TinyAtlas.Rider.write_locks(locks))
+  end
+end
+S.kit_history = S.kit_history or {}
+function draw.kit()
+  local RD = TinyAtlas.Rider
+  local Kit = RD.Kit
+  local K = RD.local_kit()
+  local seed = RD.cv.seed:GetInt()
+  header("Your kit", "Every kit comes from a number: roll one, keep the parts you like")
+  -- what it is, and its colours
+  UI.panel(18, 64, 150, 34)
+  UI.text(UI.fit(cap(Kit.describe(K)), "M1", 140), 24, 68, "M1", C.text)
+  local sw = { K.jersey, K.accent, K.accent2, K.shorts, K.socks, K.shoes }
+  for i, c in ipairs(sw) do
+    UI.rect(24 + (i - 1) * 14, 81, 12, 12, C.edge)
+    UI.rect(25 + (i - 1) * 14, 82, 10, 10, Color(c[1], c[2], c[3]))
+  end
+  local px, pw = UI.W - 218, 202
+  UI.panel(px, 60, pw, 168)
+  local function roll(to)
+    kit_cv("seed", to)
+  end
+  if UI.button("roll", "New kit", px + 6, 64, 92, "go") or (UI.pressed.SPACE and not UI.focused("kit_seed")) then
+    S.kit_history[#S.kit_history + 1] = seed
+    local n
+    repeat n = math.random(1, 2000000000) until n ~= seed
+    roll(n)
+  end
+  if #S.kit_history > 0 and UI.button("undo", "Last one", px + 104, 64, 92) then
+    roll(table.remove(S.kit_history))
+  end
+  -- the number, to share or type in
+  UI.text("Kit number", px + 8, 87, "M1", C.dim)
+  local typing = UI.focused("kit_seed")
+  if not typing then S.kit_text = tostring(RD.cv.seed:GetInt()) end
+  local before = S.kit_text
+  S.kit_text = UI.textfield("kit_seed", (S.kit_text or ""):gsub("%D", ""):sub(1, 10), px + 70, 84, pw - 76, "a number")
+  local typed = tonumber(S.kit_text)
+  if typing and S.kit_text ~= before and typed and typed >= 1 and typed <= 2147483646 then roll(floor(typed)) end
+  local locks = RD.parse_locks(RD.cv.locks:GetString())
+  local y = 106
+  local pats = {}
+  for _, p in ipairs(Kit.PATTERNS) do pats[#pats + 1] = { p[1] } end
+  local cols = {}
+  for _, c in ipairs(Kit.COLOURS) do cols[#cols + 1] = { c[1] } end
+  kit_part("k_pattern", "Pattern", "pattern", pats, K, locks, px + 4, y, pw - 8); y = y + 20
+  kit_part("k_jersey", "Jersey", "jersey", cols, K, locks, px + 4, y, pw - 8); y = y + 20
+  kit_part("k_accent", "Pattern colour", "accent", cols, K, locks, px + 4, y, pw - 8); y = y + 20
+  kit_part("k_sleeves", "Sleeves", "sleeves", { { "jersey", "jersey" }, { "accent", "pattern" } }, K, locks, px + 4, y, pw - 8); y = y + 20
+  local v, ch = UI.setting("k_skin", "Skin", RD.cv.skin:GetInt(), { min = 1, max = #Kit.SKINS, step = 1, fmt = "%d" }, px + 4, y, pw - 8)
+  if ch then kit_cv("skin", v) end
+  y = y + 20
+  v, ch = UI.setting("k_hair", "Hair", RD.cv.hair:GetInt(), { min = 1, max = #Kit.HAIRS, step = 1, fmt = "%d" }, px + 4, y, pw - 8)
+  if ch then kit_cv("hair", v) end
+  back_button("title")
+  hint("Space: new kit   Left / right: fix a part   Esc: back")
+end
+
 -- the asset packs there are (lua/tinyatlas/packs/<id>.lua, not the files that come with one)
 function S.packs()
   local out = {}
@@ -318,6 +418,180 @@ function S.packs()
   end
   if #out == 0 then out[1] = { "default", "Default" } end
   return out
+end
+
+-- a route's leaderboard in one line: the best time, and your place (from the online service, when there is one)
+function S.board_line(r, x, y, w)
+  local On = TinyAtlas.Online
+  if not r or not r.rid or not On.enabled() then return end
+  local b = On.route(r.rid, S.source())
+  UI.panel(x, y, w, 17)
+  if not b then
+    UI.text(On.online == false and "Leaderboard: offline" or "Leaderboard...", x + 6, y + 3, "M1", C.dim)
+    return
+  end
+  local best = b.board and b.board[1]
+  local left = best and string.format("Best %s  %s", UI.clock(best.time), UI.fit(best.name, "M1", 70)) or "No times yet: be the first"
+  UI.text(left, x + 6, y + 3, "M1", best and C.text or C.dim)
+  if b.me then UI.text(string.format("you %d of %d", b.me.rank, b.riders or 0), x + w - 6, y + 3, "M1", C.sign, "right")
+  elseif (b.riders or 0) > 0 then UI.text(string.format("%d riders", b.riders), x + w - 6, y + 3, "M1", C.dim, "right") end
+end
+
+-- ---- sharing one of your routes ----
+function draw.share()
+  UI.fade_left(UI.W, 0.55)
+  local r = S.share_route
+  header("Share a route", r and r.title or "")
+  local x, y, w = 18, 64, 300
+  UI.panel(x, y, w, 96)
+  UI.text("Everyone will be able to ride it, with its leaderboard.", x + 8, y + 6, "M1", C.text)
+  UI.text("Before it goes up, the first and last 300 m are cut off (where", x + 8, y + 20, "M1", C.dim)
+  UI.text("a ride often starts: your home), and only the track is kept:", x + 8, y + 31, "M1", C.dim)
+  UI.text("no times, heart rate or device.", x + 8, y + 42, "M1", C.dim)
+  S.share_mine = UI.setting("share_mine", "This is my own route", S.share_mine or "no", { { "no", "No" }, { "yes", "Yes" } }, x + 4, y + 60, w - 8)
+  if S.share_state then UI.text(S.share_state, x + 8, y + 82, "M1", S.share_ok and C.green or C.sign) end
+  if S.share_mine == "yes" and r and not S.share_busy and UI.button("share_go", "Share it", x + w - 90, y + 104, 90, "go") then
+    local pts = route_lib.trim(r.gpx.points, 300)
+    local gpx = route_lib.to_gpx(r.title, pts)
+    local rid = route_lib.id(route_lib.parse_gpx(gpx).points)
+    S.share_busy, S.share_state, S.share_ok = true, "Sharing...", false
+    TinyAtlas.Online.call("share", { gpx = gpx, name = r.title, route = rid }, function(res, err)
+      S.share_busy = false
+      if res then
+        S.share_ok = true
+        S.share_state = res.already and "It was shared already." or "Shared! It is in Shared routes now."
+        -- the shared (cut) version is the one everyone rides: keep it, so your rides count on its leaderboard
+        file.CreateDir("tinyatlas/shared")
+        file.Write("tinyatlas/shared/" .. res.route .. ".gpx", gpx)
+        S.list_t = 0
+      else S.share_state = "Could not share it: " .. tostring(err) end
+    end)
+  end
+  back_button("myroutes")
+  hint("Left / right: change   Esc: back")
+end
+
+-- ---- shared routes: from the online service, downloaded when you ride one ----
+S.shared_sort = S.shared_sort or "popular"
+function S.fetch_shared()
+  S.shared_state = "loading"
+  TinyAtlas.Online.call("routes", { sort = S.shared_sort }, function(res, err)
+    if res then S.shared_list, S.shared_state = res.routes or {}, "ready"
+    else S.shared_state, S.shared_err = "failed", err end
+  end)
+end
+function S.ride_shared(rid, cb)
+  local id = "shared/" .. rid
+  if V.read_gpx(id) then S.list_t = 0; return S.ride(id) end
+  S.shared_dl = rid
+  TinyAtlas.Online.call("route_gpx", { route = rid }, function(res, err)
+    S.shared_dl = nil
+    if not res then S.shared_err = err; return end
+    file.CreateDir("tinyatlas/shared")
+    file.Write("tinyatlas/shared/" .. rid .. ".gpx", res.gpx)
+    S.list_t = 0
+    S.ride(id)
+  end)
+end
+function draw.shared()
+  UI.fade_left(UI.W, 0.45)
+  header("Shared routes", "Routes other riders shared: ride one and race their ghosts")
+  local On = TinyAtlas.Online
+  if not On.enabled() then
+    UI.panel(18, 64, 300, 40)
+    UI.text("Online is off (Settings), or there is no online service.", 26, 72, "M1", C.dim)
+    back_button("title"); return
+  end
+  if not S.shared_state then S.fetch_shared() end
+  local v, ch = UI.setting("shared_sort", "Show", S.shared_sort, { { "popular", "Most ridden" }, { "new", "Newest" } }, 18, 62, 200)
+  if ch then S.shared_sort = v; S.fetch_shared() end
+  local list = S.shared_list or {}
+  if S.shared_state == "loading" then UI.text("Getting the routes...", 22, 86, "M1", C.dim)
+  elseif S.shared_state == "failed" then UI.text("Could not get them: " .. tostring(S.shared_err), 22, 86, "M1", C.red)
+  elseif #list == 0 then UI.text("Nobody has shared a route yet. Share yours from My routes.", 22, 86, "M1", C.dim) end
+  local chosen = UI.list("shared", list, 18, 84, 200, 140, 20, function(r, x, y, w, h, f)
+    if f then UI.sign(x, y + 1, w, h - 2, C.sign, C.signDark) else UI.panel(x, y + 1, w - 8, h - 2) end
+    UI.text(UI.fit(r.name or "Route", "M2", w - 64), x + 5, y + 3, "M2", f and C.ink or C.text)
+    local km, ku = UI.km(r.length or 0)
+    UI.text(km .. " " .. ku, x + w - 14, y + 6, "M1", f and C.ink or C.dim, "right")
+  end)
+  local fr
+  for i, r in ipairs(list) do if UI.focused("shared:" .. i) then fr = r end end
+  fr = fr or list[1]
+  if fr then
+    local px, pw = UI.W - 218, 202
+    UI.panel(px, 64, pw, 92)
+    UI.text("Shared route", px + 8, 69, "M1", C.dim)
+    UI.text(UI.fit(fr.name or "Route", "J1", pw - 16), px + 8, 79, "J1", C.text)
+    local km, ku = UI.km(fr.length or 0)
+    local cl, cu = UI.height(fr.climb or 0)
+    UI.text(km, px + 8, 101, "J1", C.sign); UI.text(ku, px + 10 + UI.textw(km, "J1"), 107, "M1", C.text)
+    UI.text(cl, px + 78, 101, "J1", C.sign); UI.text(cu .. " up", px + 80 + UI.textw(cl, "J1"), 107, "M1", C.text)
+    UI.text(string.format("%d rides   shared by %s", fr.rides or 0, UI.fit(fr.owner or "someone", "M1", 90)), px + 8, 128, "M1", C.dim)
+    if S.shared_dl then UI.text("Downloading...", px + 8, 142, "M1", C.sign) end
+    if UI.button("ride_shared", "Ride it", px + pw - 86, 162, 86, "go") then S.ride_shared(fr.id) end
+    S.board_line({ rid = fr.id }, px, 186, pw)
+  end
+  if chosen then S.ride_shared(list[chosen].id) end
+  back_button("title")
+  hint("Enter: ride it   Esc: back")
+end
+
+-- ---- friends: your code, adding theirs, riding with them ----
+function draw.friends()
+  UI.fade_left(UI.W, 0.5)
+  header("Friends", "Add friends by their code, and ride with them when they ride")
+  local On = TinyAtlas.Online
+  local x, y, w = 18, 64, 210
+  if not On.enabled() then
+    UI.panel(x, y, 300, 40)
+    UI.text("Online is off (Settings), or there is no online service.", x + 8, y + 8, "M1", C.dim)
+    back_button("title"); return
+  end
+  if not On.id and not S.hello_asked then S.hello_asked = true; On.hello() end
+  if not S.friends_t or RealTime() > S.friends_t then S.friends_t = RealTime() + 20; On.friends_now() end
+  UI.panel(x, y, w, 112)
+  UI.text("Your name", x + 8, y + 5, "M1", C.dim)
+  if UI.text_focus ~= "my_name" then S.name_text = On.my_name() end
+  local nt = UI.textfield("my_name", (S.name_text or ""):sub(1, 24), x + 8, y + 15, w - 16, "Rider")
+  if nt ~= S.name_text then S.name_text = nt; RunConsoleCommand("ta_name", nt); On.cv.name:SetString(nt); S.name_dirty = true end
+  UI.text("Your friend code", x + 8, y + 38, "M1", C.dim)
+  UI.text(On.id or (On.last_error and "offline" or "..."), x + 8, y + 47, "J1", C.sign)
+  UI.text("Add a friend's code", x + 8, y + 68, "M1", C.dim)
+  S.add_code = UI.textfield("add_code", (S.add_code or ""):upper():gsub("[^A-Z0-9]", ""):sub(1, 8), x + 8, y + 78, w - 76, "CODE")
+  if #S.add_code == 8 and UI.button("add_friend", "Add", x + w - 62, y + 77, 54, "sign") then
+    On.call("friend_add", { code = S.add_code }, function(res, err)
+      if res then On.friends, S.add_note = res.friends, "Added " .. res.friend.name; S.add_code = ""
+      else S.add_note = tostring(err) end
+    end)
+  end
+  if S.add_note then UI.text(UI.fit(S.add_note, "M1", w - 16), x + 8, y + 99, "M1", C.dim) end
+  -- the list
+  local list = On.friends or {}
+  local lx = UI.W - 218
+  if #list == 0 then UI.panel(lx, y, 202, 30); UI.text("No friends added yet.", lx + 8, y + 10, "M1", C.dim) end
+  local chosen = UI.list("friend", list, lx, y, 202, 150, 26, function(f, x2, y2, w2, h2, foc)
+    if foc then UI.sign(x2, y2 + 1, w2, h2 - 2, C.sign, C.signDark) else UI.panel(x2, y2 + 1, w2 - 8, h2 - 2) end
+    UI.text(UI.fit(f.name, "M2", w2 - 20), x2 + 5, y2 + 1, "M2", foc and C.ink or C.text)
+    local where = f.riding and (f.route_name and ("riding " .. f.route_name) or "riding in roam") or "not riding"
+    UI.text(UI.fit(where, "M1", w2 - 20), x2 + 6, y2 + 15, "M1", foc and C.ink or (f.riding and C.green or C.dim))
+  end)
+  if chosen then
+    local f = list[chosen]
+    if f.riding and f.route then
+      -- ride their route (yours, a game route or a shared one), and connect to their game if they host
+      S.join_addr = f.addr
+      local found
+      for _, r in ipairs(S.list()) do if r.rid == f.route then found = r end end
+      if found then S.ride(found.id) else S.ride_shared(f.route) end
+      if f.addr and TinyAtlas.Live then TinyAtlas.Live.join(f.addr) end
+    elseif f.riding and f.addr and TinyAtlas.Live then
+      TinyAtlas.Live.join(f.addr)
+      S.add_note = "Connecting to " .. f.name .. " (start Roam near them)"
+    end
+  end
+  if back_button("title") and S.name_dirty then S.name_dirty = nil; On.hello() end
+  hint("Enter on a friend who rides: ride with them   Esc: back")
 end
 
 function draw.settings()
@@ -350,6 +624,42 @@ function draw.settings()
   v, ch = line("cam_up", "Camera height", V.cv.up:GetFloat(), { min = 1, max = 20, step = 1, fmt = "%d m" })
   if ch then RunConsoleCommand("ta_cam_up", tostring(v)); V.cv.up:SetFloat(v) end
   if S.world_dirty then UI.text("The world look changes from the next ride.", x, y + 4, "M1", C.sign) end
+  -- online
+  local On, Live = TinyAtlas.Online, TinyAtlas.Live
+  local ox, ow = UI.W - 186, 172
+  local oy = 60
+  UI.panel(ox - 4, oy - 4, ow + 8, 132)
+  local onoff = { { 1, "On" }, { 0, "Off" } }
+  v, ch = UI.setting("online", "Online", On.cv.on:GetBool() and 1 or 0, onoff, ox, oy, ow)
+  if ch then RunConsoleCommand("ta_online", tostring(v)); On.cv.on:SetString(tostring(v)); if v == 1 then On.hello() end end
+  v, ch = UI.setting("visible", "Ride with others", On.cv.visible:GetBool() and 1 or 0, onoff, ox, oy + 22, ow)
+  if ch then RunConsoleCommand("ta_visible", tostring(v)); On.cv.visible:SetString(tostring(v)) end
+  local status
+  if TINYATLAS_LOVE then
+    v, ch = UI.setting("host", "Host (playit.gg)", Live.cv_host:GetBool() and 1 or 0, { { 0, "Off" }, { 1, "On" } }, ox, oy + 44, ow)
+    if ch then RunConsoleCommand("ta_host", tostring(v)); Live.cv_host:SetString(tostring(v)); Live.host(v == 1) end
+    local P = Live.playit()
+    local st = P and P.state or "off"
+    status = ({ off = "Not hosting: you join riders who host", download = "Getting playit...",
+      claim = "Approve Tiny Atlas on the playit page that opened", starting = "Starting playit...",
+      ready = "Others can reach you: " .. tostring(P and P.addr), unsupported = tostring(P and P.err),
+      failed = "playit: " .. tostring(P and P.err) })[st]
+  else
+    status = "Riding live: with the players on this server"
+  end
+  local service = not On.enabled() and (On.cv.on:GetBool() and "No online service set" or "Online is off")
+    or On.online == false and "Can't reach the online service" or On.id and ("Online as " .. On.my_name() .. " (" .. On.id .. ")")
+    or "Connecting..."
+  UI.text(UI.fit(service, "M1", ow), ox, oy + 70, "M1", On.online == false and C.sign or C.dim)
+  local lines, line = {}, ""
+  for word in tostring(status or ""):gmatch("%S+") do
+    if UI.textw(line .. " " .. word, "M1") > ow and line ~= "" then lines[#lines + 1] = line; line = word
+    else line = line == "" and word or (line .. " " .. word) end
+  end
+  lines[#lines + 1] = line
+  for i, l in ipairs(lines) do if i <= 3 then UI.text(l, ox, oy + 82 + (i - 1) * 10, "M1", C.dim) end end
+  local P = Live.playit and Live.playit()
+  if P and P.state == "claim" and P.claim_url then UI.text(UI.fit(P.claim_url, "M1", ow), ox, oy + 114, "M1", C.sign) end
   if back_button(S.back_to) and S.world_dirty and S.back_to == "title" then
     S.world_dirty = nil
     V.Stop(); S.background()
@@ -373,6 +683,9 @@ function draw.loading()
     S.go("ride")
     Ride.mode = "ride"
     UI.text_focus = nil
+    -- the others on the road: ghosts of this route (or computer riders); none in roam
+    local OT = TinyAtlas.Others
+    if V.mode == "ride" then OT.start(V.route_id, S.source()) else OT.stop() end
   end
   if UI.pressed.ESCAPE then V.Stop(); S.go("title") end
 end
@@ -383,6 +696,7 @@ function draw.ride()
   if V.mode == "ride" and V.R and V.s >= V.R.length - 1 then
     Ride.mode = "paused"
     S.result = S.snapshot()
+    S.result.online = TinyAtlas.Others.finish()
     S.go("results")
   end
   if UI.pressed.ESCAPE then
@@ -405,6 +719,12 @@ function draw.pause()
   y = y + (UI.focused("finish") and 25 or 21)
   if UI.menu_item("menu", "Main menu", x, y, 132) then V.paused = false; V.Stop(); S.go("title") end
   if UI.pressed.ESCAPE then resume() end
+end
+
+-- how this ride counts on the leaderboards: on a trainer, or with the keys (their own boards)
+function S.source()
+  local T = Ride.trainer
+  return T and T:device() and "trainer" or "keys"
 end
 
 -- the ride's numbers, kept for the results
@@ -445,6 +765,17 @@ function draw.results()
     UI.text(c[3], cx, cy + 22, "M1", C.dim)
   end
   if r.profile then UI.profile(r.profile, x + 10, y + 88, w - 20, 36, r.finished and math.huge or r.dist) end
+  local on = r.online
+  if on and on.time then
+    local msg, col = nil, C.text
+    if on.state == "sending" then msg = "Sending your ride to the leaderboard..."
+    elseif on.state == "sent" then
+      msg = string.format("Leaderboard: %d of %d%s", on.rank or 0, on.riders or 0, on.best and "  - your best!" or ""); col = C.green
+    elseif on.state == "failed" then msg = "Not on the leaderboard: " .. tostring(on.err); col = C.sign
+    elseif on.new_own_best then msg = "Your best on this route: saved as your ghost" end
+    if on.new_own_best and on.state == "sent" then msg = msg .. "  (and your ghost)" end
+    if msg then UI.stext(msg, 18, y + 144, "M1", col) end
+  end
   if r.route and UI.button("again", "Ride again", UI.W - 210, y + 140, 90, "go") then S.ride(r.route) end
   if UI.button("menu", "Main menu", UI.W - 112, y + 140, 94) or UI.pressed.ESCAPE then V.paused = false; V.Stop(); S.go("title") end
 end
@@ -462,6 +793,7 @@ function S.draw()
   if UI.cursor ~= menu then UI.cursor = menu; gui.EnableScreenClicker(menu) end
   UI.wants_escape = true
   if scr == "title" and not S.started then S.started = true; S.background() end
+  V.kit_view = scr == "kit"
   UI.begin(scr)
   draw[scr]()
   UI.finish()

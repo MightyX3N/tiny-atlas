@@ -37,4 +37,4 @@ end
 function love.draw() R.frame() end
 function love.keypressed(key) L.keypressed(key) end
 function love.wheelmoved(x, y) L.wheel(y) end
-function love.quit() hook.Run("ShutDown") end
+function love.quit() hook.Run("ShutDown"); L.quit() end

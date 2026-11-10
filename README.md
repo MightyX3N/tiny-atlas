@@ -25,8 +25,9 @@ pixel art, autumn, winter, or a completely different style.
 | `tools/packs/` | the default asset pack generator and the pack validator (runs the real Lua) |
 | `tools/viewer/` | a stand-in renderer (three.js, headless) used to test routes and packs |
 | `game/gamemodes/tinyatlas/` | the game: the world builder (`gamemode/atlas/`), the view, the UI kit and screens (`cl_ui.lua`, `cl_menu.lua`, `cl_hud.lua`), riding physics, trainer; its pixel fonts (`content/resource/fonts`, OFL) |
-| `game/love/` | the LÖVE layer: GMod's functions on LÖVE, downloads, the `OmniPlay.*` API over the SDK's shared memory |
-| `game/tests/` | tests without the game: physics, a fake GMod running the real Lua (`test_screens.lua` plays every screen), the OmniPlay simulator |
+| `game/love/` | the LÖVE layer: GMod's functions on LÖVE, downloads, the `OmniPlay.*` API over the SDK's shared memory, direct connections between games (`link.lua`, ENet) and hosting through playit.gg (`playit.lua`) |
+| `online/` | the online service (Cloudflare Worker + D1, free plan): leaderboards, ghosts, shared routes, friends, riders nearby |
+| `game/tests/` | tests without the game: physics, a fake GMod running the real Lua (`test_screens.lua` plays every screen, `test_online.lua` the online features), the OmniPlay simulator |
 | `tools/love_test/` | plays the real standalone on a virtual screen like a player (`run.sh walkthrough.lua`) |
 | `packs/tinyatlas_pack_default/` | the built default pack (a GMod addon folder) |
 | `docs/` | `FORMATS.md` (route package + asset pack format), `GMOD.md` (the renderer, `ta_perftest`), `TRAINER.md` (OmniPlay) |
