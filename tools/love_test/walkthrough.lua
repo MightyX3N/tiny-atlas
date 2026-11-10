@@ -4,6 +4,8 @@
 -- Screenshots of every screen go to the out folder. Ends with OK or FAILED.
 local L, R = ...
 local T = dofile(os.getenv("TA_TEST_LIB"))(L, R, os.getenv("TA_TEST_OUT"))
+-- online stays off: no test players in the real online service
+RunConsoleCommand("ta_online", "0")
 local V, S, Ride, UI = TinyAtlas.View, TinyAtlas.Screens, TinyAtlas.Ride, TinyAtlas.UI
 local bad = 0
 local function check(what, ok, detail)

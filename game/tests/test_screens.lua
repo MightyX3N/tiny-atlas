@@ -37,6 +37,9 @@ end
 http = { Fetch = function(url, ok, fail) timer.Simple(0.05, function() fail("offline test") end) end }
 local oldprint = print
 print = function(...) end
+-- online stays off here (test_online.lua tests it against a local copy of the service, not the real one)
+CreateClientConVar("ta_online", "0", true, false)
+GetConVar("ta_online"):SetString("0")
 include("cl_init.lua")
 hook.Run("InitPostEntity")
 local S, UI, V, Ride = TinyAtlas.Screens, TinyAtlas.UI, TinyAtlas.View, TinyAtlas.Ride

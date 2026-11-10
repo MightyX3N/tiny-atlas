@@ -16,7 +16,7 @@ local cv_url = CreateClientConVar("ta_online_url", "", true, false, "The online 
 local cv_name = CreateClientConVar("ta_name", "", true, false, "Your rider name")
 local cv_visible = CreateClientConVar("ta_visible", "1", true, false, "Other riders can find you and ride with you")
 O.cv = { on = cv_on, url = cv_url, name = cv_name, visible = cv_visible }
-O.DEFAULT_URL = ""        -- the deployed service's address (https://tinyatlas.<account>.workers.dev)
+O.DEFAULT_URL = "https://tinyatlas.drgamingdk.workers.dev"      -- the online service (online/, deployed by GitHub Actions)
 O.PRESENCE_EVERY = 60
 
 function O.url()

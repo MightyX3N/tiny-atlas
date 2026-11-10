@@ -9,6 +9,7 @@ http = http or { Fetch = function(url, ok, fail) fail("no network in test") end 
 local fails = 0
 local function check(name, ok, extra) if not ok then fails = fails + 1 end; print(string.format("%-58s %s %s", name, ok and "ok" or "FAIL", extra or "")) end
 
+CreateClientConVar("ta_online", "0", true, false):SetString("0")     -- no test players in the real online service
 include("cl_init.lua")
 check("gamemode loads; OmniPlay API present", OmniPlay ~= nil and OmniPlay.Get ~= nil and Trainer ~= nil)
 check("bridge uses the data folder (no module installed)", OmniPlay.Native == false)

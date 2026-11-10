@@ -54,6 +54,7 @@ end
 -- remember where the renderer clears the depth buffer (distant ground drawn first, then the cells over it)
 function render.ClearDepth() if F.capture then F.clear_at = #F.draws end end
 
+CreateClientConVar("ta_online", "0", true, false):SetString("0")     -- no test players in the real online service
 include("cl_init.lua")
 local V = TinyAtlas.View
 for _, kv in ipairs({ { "TA_STYLE", "ta_style" }, { "TA_PACK", "ta_pack" }, { "TA_PIXELATE", "ta_pixelate" }, { "TA_CAM_BACK", "ta_cam_back" }, { "TA_CAM_UP", "ta_cam_up" } }) do

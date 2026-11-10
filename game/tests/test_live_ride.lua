@@ -37,6 +37,7 @@ print = function(...)
   lines[#lines + 1] = l
   if not l:match("FAILED: elevation tile") then oldprint(string.format("%7.1f s  %s", F.t, l)) end
 end
+CreateClientConVar("ta_online", "0", true, false):SetString("0")     -- no test players in the real online service
 include("cl_init.lua")
 local V = TinyAtlas.View
 -- which pieces of work run longer than a frame can take in one go (they cannot yield in the middle)
