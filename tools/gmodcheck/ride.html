@@ -25,7 +25,7 @@ const mats = {};
 async function material(texname) {
   if (mats[texname]) return mats[texname];
   const t = texname && texname !== 'color/white' ? await tex(texname) : null;
-  return mats[texname] = new THREE.MeshBasicMaterial({ map: t, vertexColors: true, side: THREE.DoubleSide, color: (t || texname === 'color/white') ? 0xffffff : 0xff00ff });
+  return mats[texname] = new THREE.MeshBasicMaterial({ map: t, vertexColors: true, side: THREE.DoubleSide, alphaTest: 0.5, color: (t || texname === 'color/white') ? 0xffffff : 0xff00ff });
 }
 const byId = {}; for (const m of cap.meshes) byId[m.id] = m;
 const objs = {};

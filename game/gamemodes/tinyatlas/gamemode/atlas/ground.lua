@@ -353,6 +353,113 @@ local function feature_level(f, levels)
   return v or nil
 end
 
+-- Border points that a built neighbour already has take its heights; nearby points move by the same amount, less
+-- the farther they are from the border. Standing water moves as a whole so it stays level.
+--   pin(gx, gy) -> { land = m, water = m or nil } or nil
+M.PIN_FADE = 30          -- metres over which a border correction fades out
+local function pin_borders(r, gx0, gy0, pin, land, water, used, wet, tick)
+  local X, Y, V, N, surf, nt, S, mpu = r.X, r.Y, r.V, r.N, r.surf, r.nt, r.S, r.mpu
+  local sides = { {}, {}, {}, {} }       -- x = 0, x = S, y = 0, y = S: { position along the side, land change }
+  local pinned, npin, worst = {}, 0, 0
+  local wshift = {}                      -- water change at pinned points
+  for v in pairs(used) do
+    local x, y = X[v], Y[v]
+    if x == 0 or y == 0 or x == S or y == S then
+      local p = pin(gx0 + x, gy0 + y)
+      if p then
+        local dl = p.land - land[v]
+        pinned[v] = p; npin = npin + 1
+        if abs(dl) > worst then worst = abs(dl) end
+        if p.water and water[v] then
+          wshift[v] = p.water - water[v]
+          if abs(wshift[v]) > worst then worst = abs(wshift[v]) end
+        end
+        if x == 0 then local L = sides[1]; L[#L + 1] = { y, dl } end
+        if x == S then local L = sides[2]; L[#L + 1] = { y, dl } end
+        if y == 0 then local L = sides[3]; L[#L + 1] = { x, dl } end
+        if y == S then local L = sides[4]; L[#L + 1] = { x, dl } end
+      end
+    end
+  end
+  if npin == 0 then return 0, 0 end
+  local FADE = M.PIN_FADE / mpu          -- in cell units
+  for _, L in ipairs(sides) do table.sort(L, function(a, b) return a[1] < b[1] end) end
+  -- change along a side at position t, and how much of it applies there (fades past the last pinned point)
+  local function along(L, t)
+    local n = #L
+    if t <= L[1][1] then local d = L[1][1] - t; return L[1][2], d < FADE and 1 - d / FADE or 0 end
+    if t >= L[n][1] then local d = t - L[n][1]; return L[n][2], d < FADE and 1 - d / FADE or 0 end
+    local lo, hi = 1, n
+    while hi - lo > 1 do
+      local m = floor((lo + hi) / 2)
+      if L[m][1] <= t then lo = m else hi = m end
+    end
+    local a, b = L[lo], L[hi]
+    if b[1] == a[1] then return a[2], 1 end
+    return a[2] + (b[2] - a[2]) * (t - a[1]) / (b[1] - a[1]), 1
+  end
+  local function smooth(u) return u * u * (3 - 2 * u) end
+  local n = 0
+  for v in pairs(used) do
+    n = n + 1
+    if n % 256 == 0 then tick() end
+    if not pinned[v] then
+      local x, y = X[v], Y[v]
+      local sw, sd = 0, 0
+      for i = 1, 4 do
+        local L = sides[i]
+        if #L > 0 then
+          local d = i == 1 and x or i == 2 and S - x or i == 3 and y or S - y
+          if d < FADE then
+            local val, fa = along(L, i <= 2 and y or x)
+            local w = smooth(1 - d / FADE) * fa
+            sw = sw + w; sd = sd + w * val
+          end
+        end
+      end
+      if sw > 0 then land[v] = land[v] + sd / max(1, sw) end
+    end
+  end
+  -- water: every connected piece of water that reaches a pinned point moves by that point's change
+  local seen = {}
+  for t = 1, nt do
+    if WATER[surf[t]] and not seen[t] then
+      local tris, stack, sn = {}, { t }, 1
+      seen[t] = true
+      local sum, cnt = 0, 0
+      local verts = {}
+      while sn > 0 do
+        local u = stack[sn]; sn = sn - 1
+        tris[#tris + 1] = u
+        local o = 3 * u - 3
+        for i = 1, 3 do
+          local v = V[o + i]
+          if not verts[v] then
+            verts[v] = true
+            if wshift[v] then sum = sum + wshift[v]; cnt = cnt + 1 end
+          end
+          local w = N[o + i]
+          if w and WATER[surf[w]] and not seen[w] then seen[w] = true; sn = sn + 1; stack[sn] = w end
+        end
+      end
+      if cnt > 0 then
+        local d = sum / cnt
+        for v in pairs(verts) do
+          if not wshift[v] and water[v] then
+            water[v] = water[v] + d
+            if not pinned[v] and land[v] < water[v] + 0.3 then land[v] = water[v] + 0.3 end
+          end
+        end
+      end
+    end
+  end
+  for v, p in pairs(pinned) do
+    land[v] = p.land
+    if p.water and water[v] then water[v] = p.water end
+  end
+  return npin, worst
+end
+
 function M.heights(r, H, gx0, gy0, opts)
   opts = opts or {}
   local tick = opts.tick or function() end
@@ -466,6 +573,13 @@ function M.heights(r, H, gx0, gy0, opts)
   for v, h0 in pairs(before) do
     local h = land[v]
     if h > h0 + 0.25 then land[v] = h0 + 0.25 elseif h < h0 - 0.25 then land[v] = h0 - 0.25 end
+  end
+
+  -- seams: where a neighbouring cell is already built, the shared border points take its heights exactly (each cell
+  -- works out roads and water from its own piece of the map, so they differ a little); the difference fades out
+  -- over the PIN_FADE metres next to the border, so the ground does not step there
+  if opts.pin then
+    stats.pinned, stats.pin_worst = pin_borders(r, gx0, gy0, opts.pin, land, water, used, wet, tick)
   end
 
   -- quay walls / banks: edges where a water triangle meets a land triangle (the cell border is not a wall)

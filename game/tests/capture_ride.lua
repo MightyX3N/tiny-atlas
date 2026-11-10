@@ -9,11 +9,12 @@ local STEP = tonumber(arg[4]) or 25
 local MAXF = tonumber(arg[5]) or 1e9
 local GAME = here .. ".."
 local PACK = here .. "../../packs/tinyatlas_pack_default"
+local PACK2 = here .. "../../packs/tinyatlas_pack_city"
 local DATA = os.tmpname() .. "_gmdata"
 os.execute('mkdir -p "' .. DATA .. '/tinyatlas" && ln -s "' .. CACHE .. '" "' .. DATA .. '/tinyatlas/cache"')
 local F = dofile(here .. "fakegmod.lua")(DATA, here .. "../gamemodes/tinyatlas/gamemode")
-dofile(here .. "fakegmod_render.lua")(F, { lua_roots = { here .. "../gamemodes", PACK .. "/lua" },
-  material_roots = { PACK .. "/materials" }, screen = { 1280, 720 } })
+dofile(here .. "fakegmod_render.lua")(F, { lua_roots = { here .. "../gamemodes", PACK .. "/lua", PACK2 .. "/lua" },
+  material_roots = { PACK .. "/materials", PACK2 .. "/materials" }, screen = { 1280, 720 } })
 GM = { FolderName = "tinyatlas" }
 F.keep = true
 KEY_A, KEY_D = 11, 14
@@ -53,7 +54,7 @@ function render.ClearDepth() if F.capture then F.clear_at = #F.draws end end
 
 include("cl_init.lua")
 local V = TinyAtlas.View
-for _, kv in ipairs({ { "TA_STYLE", "ta_style" }, { "TA_PIXELATE", "ta_pixelate" }, { "TA_CAM_BACK", "ta_cam_back" }, { "TA_CAM_UP", "ta_cam_up" } }) do
+for _, kv in ipairs({ { "TA_STYLE", "ta_style" }, { "TA_PACK", "ta_pack" }, { "TA_PIXELATE", "ta_pixelate" }, { "TA_CAM_BACK", "ta_cam_back" }, { "TA_CAM_UP", "ta_cam_up" } }) do
   if os.getenv(kv[1]) then F.set(kv[2], os.getenv(kv[1])) end
 end
 TinyAtlas.Ride = { s = 0, speed = 8 }

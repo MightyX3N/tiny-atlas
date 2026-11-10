@@ -27,6 +27,70 @@ local function key(x, y) return x * 65536 + y end
 
 function M:has(x, y) return self.tiles[key(x, y)] ~= nil end
 
+-- Lidar holes (ported from BeamNG.Earth's dem.fill_holes, MIT): national lidar terrain models have no ground under
+-- buildings, and Mapterhorn writes those cells as exactly 0 m. In a low country (Amsterdam's ground is -1 .. +2 m)
+-- every building became a pit or a bump. Zero cells take the mean of their non-zero 4-neighbours, round after round
+-- (k rounds); zero areas wider than that are the open sea and stay 0, and so does the band filled into their edge.
+--   fill_holes(h, n, k) changes h (0-based, n x n) in place; returns the number of cells filled
+function M.fill_holes(h, n, k, tick)
+  local todo, nt = {}, 0
+  local is_hole = {}
+  for i = 0, n * n - 1 do
+    if h[i] == 0 then nt = nt + 1; todo[nt] = i; is_hole[i] = true end
+  end
+  if nt == 0 or nt == n * n then return 0 end
+  local open = {}                       -- cells still to fill
+  for k2 = 1, nt do open[todo[k2]] = true end
+  local filled = 0
+  for _ = 1, k do
+    if nt == 0 then break end
+    local got, vals, ng = {}, {}, 0
+    local rest, nr = {}, 0
+    for k2 = 1, nt do
+      local c = todo[k2]
+      local i, j = floor(c / n), c % n
+      local s, w = 0, 0
+      local u = (i > 0 and c - n or c)
+      local d = (i < n - 1 and c + n or c)
+      local l = (j > 0 and c - 1 or c)
+      local r = (j < n - 1 and c + 1 or c)
+      if not open[u] then s = s + h[u]; w = w + 1 end
+      if not open[d] then s = s + h[d]; w = w + 1 end
+      if not open[l] then s = s + h[l]; w = w + 1 end
+      if not open[r] then s = s + h[r]; w = w + 1 end
+      if w > 0 then ng = ng + 1; got[ng] = c; vals[ng] = s / w
+      else nr = nr + 1; rest[nr] = c end
+    end
+    for k2 = 1, ng do h[got[k2]] = vals[k2]; open[got[k2]] = nil end
+    filled = filled + ng
+    todo, nt = rest, nr
+    if tick then tick() end
+  end
+  if nt > 0 then
+    -- the sea: what is left, grown back over the filled band (k rounds), is 0 again
+    local wide = {}
+    for k2 = 1, nt do wide[todo[k2]] = true end
+    local front, nf = todo, nt
+    for _ = 1, k do
+      local nxt, nn = {}, 0
+      for k2 = 1, nf do
+        local c = front[k2]
+        local i, j = floor(c / n), c % n
+        local nb = { i > 0 and c - n or nil, i < n - 1 and c + n or nil, j > 0 and c - 1 or nil, j < n - 1 and c + 1 or nil }
+        for q = 1, 4 do
+          local v = nb[q]
+          if v and is_hole[v] and not wide[v] then wide[v] = true; nn = nn + 1; nxt[nn] = v end
+        end
+      end
+      front, nf = nxt, nn
+      if nf == 0 then break end
+    end
+    for c in pairs(wide) do if h[c] ~= 0 then filled = filled - 1 end; h[c] = 0 end
+  end
+  return filled
+end
+M.HOLE_FILL_M, M.HOLE_FILL_MAX_PX = 600, 24
+
 -- keep one tile; bytes are a WebP (Mapterhorn) or PNG (AWS Terrarium) file. Returns the source name.
 function M:add(x, y, bytes, tick)
   local h = {}
@@ -40,6 +104,11 @@ function M:add(x, y, bytes, tick)
       if tick and i % 16384 == 0 then tick() end
     end
     src = "mapterhorn"
+    -- (Mapterhorn's zoom-14 tiles are national lidar: no ground under buildings)
+    local lat = math.deg(math.atan(math.sinh(math.pi * (1 - 2 * (y + 0.5) / 16384))))
+    local px_m = 40075016.686 * math.cos(math.rad(lat)) / 16384 / N
+    local k = math.min(M.HOLE_FILL_MAX_PX, math.max(2, floor(M.HOLE_FILL_M / px_m + 0.5)))
+    self.holes_filled = (self.holes_filled or 0) + M.fill_holes(h, N, k, tick)
   else
     local img = png.decode(bytes)
     if img.w ~= 256 or img.h ~= 256 then error("height: PNG elevation tile is not 256 x 256") end

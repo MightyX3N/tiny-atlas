@@ -28,7 +28,7 @@ M.WATER = { water = true, sea = true, stream = true }
 -- surfaces and their priority (higher wins where shapes overlap)
 M.PRIORITY = {
   building = 90, road = 80, road_unpaved = 79, cycleway = 78, path = 77, path_unpaved = 77, rail = 76, track = 75,
-  pier = 74, water = 70, sea = 70, stream = 70, paved = 60,
+  pier = 74, water = 70, sea = 70, stream = 70, paved = 60, worn = 48, worn_wood = 48, worn_grass = 48, worn_rural = 48,
   sand = 45, wetland = 44, wood = 40, park = 32, grass = 30, pitch = 34, cemetery = 26, farmland = 20,
   rock = 18, ice = 18, residential = 10, commercial = 12, industrial = 12, ground = 0,
 }
@@ -127,8 +127,28 @@ local function polygon_shape(f, surf, ox, oy, tick)
   return sh
 end
 
--- line feature -> union of quads (one per segment) and bevel triangles at the joints, width w in cell units
-local function line_shape(f, surf, ox, oy, w)
+-- a smooth random value -1..1 at a point of the world (global units / wavelength): the same in every cell and tile,
+-- and every time a cell is built (paths' edges wobble with it)
+local function hash2(i, j, salt)
+  local h = (i * 374761393 + j * 668265263 + salt * 2246822519) % 4294967296
+  h = (h * 3266489917 + 374761393) % 4294967296
+  h = (h * 668265263 + 2246822519) % 4294967296
+  return h / 4294967296 * 2 - 1
+end
+local function wobble(x, y, salt)
+  local i, j = floor(x), floor(y)
+  local tx, ty = x - i, y - j
+  tx, ty = tx * tx * (3 - 2 * tx), ty * ty * (3 - 2 * ty)
+  local a = hash2(i, j, salt) + (hash2(i + 1, j, salt) - hash2(i, j, salt)) * tx
+  local b = hash2(i, j + 1, salt) + (hash2(i + 1, j + 1, salt) - hash2(i, j + 1, salt)) * tx
+  return a + (b - a) * ty
+end
+M.wobble = wobble
+
+-- line feature -> union of quads (one per segment) and bevel triangles at the joints, width w in cell units.
+-- wob (paths): each side's edge wanders in and out by up to wob of the half width, long segments cut into short ones
+-- so it can; wavelength and the cell's global position (gox, goy, cell units) come with it
+local function line_shape(f, surf, ox, oy, w, wob)
   local sh = new_shape(surf, "union")
   sh.lines, sh.width = {}, w
   local h = w / 2
@@ -136,29 +156,61 @@ local function line_shape(f, surf, ox, oy, w)
     local xs, ys, n = {}, {}, 0
     for k = 1, #part, 2 do
       local x, y = (part[k] - ox) * SCALE, (part[k + 1] - oy) * SCALE
-      if n == 0 or abs(x - xs[n]) + abs(y - ys[n]) > 0.5 then n = n + 1; xs[n] = x; ys[n] = y end
+      if n == 0 or abs(x - xs[n]) + abs(y - ys[n]) > 0.5 then
+        if wob and n > 0 then
+          -- short pieces, so the edges can wander along a long straight
+          local dx, dy = x - xs[n], y - ys[n]
+          local pieces = floor(sqrt(dx * dx + dy * dy) / wob.step)
+          local x0, y0 = xs[n], ys[n]
+          for q = 1, pieces - 1 do n = n + 1; xs[n] = x0 + dx * q / pieces; ys[n] = y0 + dy * q / pieces end
+        end
+        n = n + 1; xs[n] = x; ys[n] = y
+      end
     end
     if n >= 2 then sh.lines[#sh.lines + 1] = { xs = xs, ys = ys, n = n } end
+    -- each point's half width on the left and on the right
+    local hl, hr = {}, {}
+    for k = 1, n do
+      if wob then
+        local gx, gy = (wob.gx + xs[k]) / wob.wave, (wob.gy + ys[k]) / wob.wave
+        -- swelling (the whole path, both sides alike; slow), then each side's own small wander
+        local sw = 1
+        if wob.swell then
+          local f = (wobble((wob.gx + xs[k]) / wob.swell.wave, (wob.gy + ys[k]) / wob.swell.wave, 41) + 1) / 2
+          sw = wob.swell.lo + (wob.swell.hi - wob.swell.lo) * f
+          if wob.swell.half and wob.swell.half * sw < wob.swell.min / 2 then sw = wob.swell.min / 2 / wob.swell.half end
+        end
+        -- (wob.outer: only the part beyond that half width wanders, e.g. a worn strip beside a path; the path inside
+        -- it swells, so the strip moves out with it)
+        local base = (wob.outer or 0) * (wob.outer and sw or 1)
+        local hh = wob.outer and (base + h - wob.outer) or h * sw
+        hl[k] = base + (hh - base) * (1 + wob.amount * wobble(gx, gy, wob.salt))
+        hr[k] = base + (hh - base) * (1 + wob.amount * wobble(gx, gy, wob.salt + 1))
+      else hl[k], hr[k] = h, h end
+    end
     local pnx, pny
     for k = 1, n - 1 do
       local dx, dy = xs[k + 1] - xs[k], ys[k + 1] - ys[k]
       local L = sqrt(dx * dx + dy * dy)
-      local nx, ny = -dy / L * h, dx / L * h
+      local nx, ny = -dy / L, dx / L
       local q = {
-        floor(xs[k] + nx + 0.5), floor(ys[k] + ny + 0.5), floor(xs[k + 1] + nx + 0.5), floor(ys[k + 1] + ny + 0.5),
-        floor(xs[k + 1] - nx + 0.5), floor(ys[k + 1] - ny + 0.5), floor(xs[k] - nx + 0.5), floor(ys[k] - ny + 0.5),
+        floor(xs[k] + nx * hl[k] + 0.5), floor(ys[k] + ny * hl[k] + 0.5),
+        floor(xs[k + 1] + nx * hl[k + 1] + 0.5), floor(ys[k + 1] + ny * hl[k + 1] + 0.5),
+        floor(xs[k + 1] - nx * hr[k + 1] + 0.5), floor(ys[k + 1] - ny * hr[k + 1] + 0.5),
+        floor(xs[k] - nx * hr[k] + 0.5), floor(ys[k] - ny * hr[k] + 0.5),
       }
       q[9], q[10] = q[1], q[2]
       add_ring(sh, q)
       if pnx then
         -- bevel: triangle between the previous segment's end edge and this segment's start edge, on the outer side
         local cross = pnx * ny - pny * nx
-        if abs(cross) > 1e-9 * h * h then
+        if abs(cross) > 1e-9 then
           local sgn = cross > 0 and -1 or 1
+          local hh = sgn > 0 and hl[k] or hr[k]
           local t = {
             floor(xs[k] + 0.5), floor(ys[k] + 0.5),
-            floor(xs[k] + sgn * pnx + 0.5), floor(ys[k] + sgn * pny + 0.5),
-            floor(xs[k] + sgn * nx + 0.5), floor(ys[k] + sgn * ny + 0.5),
+            floor(xs[k] + sgn * pnx * hh + 0.5), floor(ys[k] + sgn * pny * hh + 0.5),
+            floor(xs[k] + sgn * nx * hh + 0.5), floor(ys[k] + sgn * ny * hh + 0.5),
           }
           t[7], t[8] = t[1], t[2]
           add_ring(sh, t)
@@ -169,6 +221,19 @@ local function line_shape(f, surf, ox, oy, w)
   end
   return sh
 end
+
+-- paths, tracks and unpaved ways: their edges wander, and a worn strip (grass and dirt) runs along both sides
+-- (paved paths and cycleways are laid: their edges barely wander and they get no worn strip)
+M.WORN = { path_unpaved = 0.6, track = 0.7, road_unpaved = 0.6 }                                  -- strip width, metres
+M.WOBBLE = { path = 0.06, path_unpaved = 0.35, track = 0.3, road_unpaved = 0.2, cycleway = 0.04 } -- of the half width
+-- natural paths swell and narrow slowly along their length, as real ones do (built paths and streets keep the map's
+-- width): from lo to hi times the width over about `wave` metres, never narrower than `min` metres
+M.SWELL = { path_unpaved = { 0.8, 1.6 }, track = { 0.85, 1.5 }, road_unpaved = { 0.9, 1.3 } }
+M.SWELL_WAVE, M.SWELL_MIN = 30, 1.5
+-- which worn strip a ground makes (its own colours: the pack has worn_wood, worn_grass, worn_rural)
+M.WORN_OF = { wood = "wood", wetland = "wood", park = "grass", grass = "grass", cemetery = "grass", pitch = "grass",
+  residential = "grass", commercial = "grass", industrial = "grass", ground = "rural", farmland = "rural", scrub = "rural",
+  sand = "rural", rock = "rural", meadow = "grass" }
 
 -- which surface a vector tile feature makes, or nil
 local function classify(layer, p, ftype)
@@ -199,7 +264,7 @@ local function classify(layer, p, ftype)
       return "rail", "line", 3
     end
     if c == "ferry" or c == "aerialway" then return nil end
-    local w = ROAD_W[c]
+    local w = p.width or ROAD_W[c]          -- (Overture's roads come with their width: ov_layers.lua)
     if not w or w == 0 then return nil end
     local unpaved = p.surface == "unpaved"
     if c == "path" then
@@ -208,6 +273,8 @@ local function classify(layer, p, ftype)
     end
     if c == "track" then return "track", "line", w end
     return unpaved and "road_unpaved" or "road", "line", w
+  elseif layer == "ov_surface" then
+    return p.surf, "poly"
   elseif layer == "waterway" then
     if p.brunnel == "tunnel" then return nil end
     local w = WATERWAY_W[p.class]
@@ -216,9 +283,9 @@ local function classify(layer, p, ftype)
   return nil
 end
 
-local LAYERS = { "water", "waterway", "landcover", "landuse", "park", "aeroway", "building", "transportation" }
+local LAYERS = { "water", "waterway", "landcover", "landuse", "ov_surface", "park", "aeroway", "building", "transportation" }
 
-local function collect(layers, cx, cy, mpu, tick)
+local function collect(layers, cx, cy, mpu, tick, gox, goy)
   local ox, oy = cx * 512, cy * 512              -- cell origin in tile units
   local m0, m1 = -64, S + 64                    -- keep shapes that come near the cell
   local shapes, brunnels = {}, {}
@@ -233,7 +300,7 @@ local function collect(layers, cx, cy, mpu, tick)
         -- the ground under (or over) it; kept as centre lines for that
         if lname == "transportation" and f.type == 2 and (f.props.brunnel == "bridge" or f.props.brunnel == "tunnel")
           and f.props.class ~= "rail" and f.props.class ~= "transit" then
-          local w = ROAD_W[f.props.class] or 3
+          local w = f.props.width or ROAD_W[f.props.class] or 3
           for _, part in ipairs(f.parts) do
             local xs, ys, n, near = {}, {}, 0, false
             for k = 1, #part, 2 do
@@ -268,8 +335,29 @@ local function collect(layers, cx, cy, mpu, tick)
             if how == "poly" then
               sh = polygon_shape(f, surf, ox, oy, tick)
               if M.WATER[surf] then sh.feature = f end      -- ground.lua finds the water level per feature
-            elseif f.type == 2 then sh = line_shape(f, surf, ox, oy, wm / mpu) end
+            elseif f.type == 2 then
+              local amt = M.WOBBLE[surf]
+              local sw = M.SWELL[surf]
+              local swell = sw and { lo = sw[1], hi = sw[2], wave = M.SWELL_WAVE / mpu, min = M.SWELL_MIN / mpu, half = wm / mpu / 2 } or nil
+              local wob = amt and gox and { amount = amt, wave = 7 / mpu, step = 2.5 / mpu, gx = gox, gy = goy, salt = 11, swell = swell } or nil
+              sh = line_shape(f, surf, ox, oy, wm / mpu, wob)
+              -- the worn strip either side (wider, wobbling on its own; the path itself is drawn over it)
+              local wn = M.WORN[surf]
+              if wn and gox and #sh.rings > 0 then
+                local ws = line_shape(f, "worn", ox, oy, (wm + 2 * wn) / mpu,
+                  -- it comes and goes: from nearly nothing to twice as wide, changing every few metres
+                  { amount = 0.95, wave = 3.5 / mpu, step = 1.5 / mpu, gx = gox, gy = goy, salt = 23, outer = wm / mpu / 2, swell = swell })
+                ws.lines = nil
+                if #ws.rings > 0 then shapes[#shapes + 1] = ws end
+              end
+            end
             if sh and #sh.rings > 0 then shapes[#shapes + 1] = sh end
+            -- a town street's sidewalks: pavement either side of the carriageway, up to the buildings
+            if how == "line" and f.type == 2 and f.props.walk then
+              local sw = line_shape(f, "paved", ox, oy, (wm + 2 * f.props.walk) / mpu)
+              sw.lines = nil
+              if #sw.rings > 0 then shapes[#shapes + 1] = sw end
+            end
           end
         end
       end
@@ -493,7 +581,10 @@ function M.build(layers, cx, cy, lat, opts)
   local mpu = M.metres_per_unit(lat)
 
   local tick = opts.tick or function() end
-  local shapes, brunnels = collect(layers, cx, cy, mpu, tick)
+  -- the cell's place in the world (cell units; needs the tile: opts.tx, opts.ty), for paths' wandering edges
+  local gox = opts.tx and (opts.tx * 8 + cx) * S or nil
+  local goy = opts.ty and (opts.ty * 8 + cy) * S or nil
+  local shapes, brunnels = collect(layers, cx, cy, mpu, tick, gox, goy)
   table.sort(shapes, function(a, b) return a.prio > b.prio end)
   stats.shapes = #shapes
   local t1 = clock(); stats.ms_collect = (t1 - t0) * 1000
@@ -582,13 +673,21 @@ function M.build(layers, cx, cy, lat, opts)
   local function query(x, y)
     local gx, gy = min(S / GB - 1, max(0, floor(x / GB))), min(S / GB - 1, max(0, floor(y / GB)))
     local L = grid[gy * 64 + gx]
+    local worn = false
     if L then
       for _, si in ipairs(L) do
         local sh = shapes[si]
-        if in_shape(sh, x, y) then return sh.surf end
+        if in_shape(sh, x, y) then
+          if sh.surf ~= "worn" then
+            -- a worn strip is worn whatever ground lies under it: woods, grass or open country
+            if worn then return "worn_" .. (M.WORN_OF[sh.surf] or "grass") end
+            return sh.surf
+          end
+          worn = true
+        end
       end
     end
-    return "ground"
+    return worn and "worn_rural" or "ground"
   end
   for t = 1, T.nt do
     tick()
@@ -661,6 +760,11 @@ function M.build(layers, cx, cy, lat, opts)
     end
     stats.slivers = changed
   end
+  -- thin bits: hairlines of one surface showing through another (a sliver of pavement across a road where two road
+  -- pieces almost touch, a line of grass through a yard): a triangle under THIN_BIT metres thick whose corners all
+  -- touch another surface takes that surface (roads first; a road only gives way to a higher road); repeated so a
+  -- chain of them goes too
+  stats.thin_bits = M.thin_bits(T, X, Y, V, N, surf, mpu)
   local t5 = clock(); stats.ms_label = (t5 - t4) * 1000
 
   -- drop constraints between equal surfaces (keep the cell border) and restore Delaunay
@@ -675,6 +779,8 @@ function M.build(layers, cx, cy, lat, opts)
     -- flips move triangles between regions only within one surface, so labels stay valid: a flip happens only
     -- across an unconstrained edge, whose two triangles have the same surface
     cdt.delaunay(T)
+    -- restoring the triangulation can leave new hairlines where a surface narrows to nothing
+    stats.thin_bits = stats.thin_bits + M.thin_bits(T, X, Y, V, N, surf, mpu)
   end
   local t6 = clock(); stats.ms_clean = (t6 - t5) * 1000
   stats.ms_total = (t6 - t0) * 1000
@@ -701,6 +807,83 @@ function M.build(layers, cx, cy, lat, opts)
   return { S = S, X = X, Y = Y, V = V, C = C, N = T.N, nt = T.nt, np = T.np, surf = surf, stats = stats,
     problems = problems, mpu = mpu, shapes = shapes, cx = cx, cy = cy, water_shapes_at = water_shapes_at, water_layer = layers.water, brunnels = brunnels,
     tile_origin = { cx * 512, cy * 512 } }
+end
+
+M.THIN_BIT = 0.35          -- metres
+local function rideable(s) return M.ROADLIKE[s] and s ~= "rail" end
+function M.thin_bits(T, X, Y, V, N, surf, mpu)
+  local limit = M.THIN_BIT / mpu
+  local P = M.PRIORITY
+  local WATER = M.WATER
+  local function better(s2, cur)
+    if not cur then return true end
+    if rideable(s2) ~= rideable(cur) then return rideable(s2) end
+    return (P[s2] or 0) > (P[cur] or 0)
+  end
+  local changed = 0
+  local done = {}                  -- each triangle changes once (no swapping back and forth)
+  for _ = 1, 4 do
+    -- the surfaces at each point (water left out)
+    local touch = {}
+    for t = 1, T.nt do
+      local s = surf[t]
+      if not WATER[s] then
+        local o = 3 * t - 3
+        for i = 1, 3 do
+          local v = V[o + i]
+          local m = touch[v]; if not m then m = {}; touch[v] = m end
+          m[s] = true
+        end
+      end
+    end
+    local n = 0
+    for t = 1, T.nt do
+      local s = surf[t]
+      local o = 3 * t - 3
+      local a, b, c = V[o + 1], V[o + 2], V[o + 3]
+      local L = { (X[b] - X[a]) ^ 2 + (Y[b] - Y[a]) ^ 2, (X[c] - X[b]) ^ 2 + (Y[c] - Y[b]) ^ 2, (X[a] - X[c]) ^ 2 + (Y[a] - Y[c]) ^ 2 }
+      local long = math.sqrt(math.max(L[1], L[2], L[3]))
+      local area2 = math.abs((X[b] - X[a]) * (Y[c] - Y[a]) - (X[c] - X[a]) * (Y[b] - Y[a]))
+      if not done[t] and long > 0 and area2 / long < limit then
+        local to
+        local short = (L[1] <= L[2] and L[1] <= L[3]) and 1 or (L[2] <= L[3] and 2 or 3)
+        local n1, n2
+        for i = 1, 3 do
+          if i ~= short then
+            local u = N[o + i]
+            local su = u and surf[u] or false
+            if n1 == nil then n1 = su else n2 = su end
+          end
+        end
+        -- 1. other surfaces along both long sides: it is a line between them
+        if n1 and n2 and n1 ~= s and n2 ~= s then
+          local roads_around = rideable(n1) or rideable(n2)
+          for _, s2 in ipairs({ n1, n2 }) do
+            -- water and land swap only when the line lies wholly in the other (a strand of water through
+            -- buildings, a strip of grass across a canal)
+            local fits = (not WATER[s]) == (not WATER[s2]) or ((not WATER[n1]) == (not WATER[n2]))
+            -- a line of road between other roads or paths stays something you can ride on
+            if fits and rideable(s) and roads_around then fits = rideable(s2) end
+            if fits and better(s2, to) then to = s2 end
+          end
+        end
+        -- 2. not inside its own surface, and another surface at all three corners (a road only gives way to a
+        -- higher road)
+        local ta, tb, tc = touch[a], touch[b], touch[c]
+        if not to and n1 ~= s and n2 ~= s and not WATER[s] and s ~= "rail" and ta and tb and tc then
+          local function ok(s2)
+            return s2 ~= s and ta[s2] and tb[s2] and tc[s2] and (not rideable(s) or (rideable(s2) and (P[s2] or 0) > (P[s] or 0)))
+          end
+          for i = 1, 3 do local u = N[o + i]; if u and ok(surf[u]) and better(surf[u], to) then to = surf[u] end end
+          if not to then for s2 in pairs(ta) do if ok(s2) and better(s2, to) then to = s2 end end end
+        end
+        if to then surf[t] = to; done[t] = true; n = n + 1 end
+      end
+    end
+    changed = changed + n
+    if n == 0 then break end
+  end
+  return changed
 end
 
 M._split_all = split_all          -- for tests

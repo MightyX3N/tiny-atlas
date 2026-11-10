@@ -5,6 +5,7 @@
 --   R.n, R.S[i] (metres along), R.X[i], R.Y[i] (metres from the world origin, y north), R.GX[i], R.GY[i] (global
 --   units), R.Z[i] (metres, after heights are filled in), R.surf[i] (ground surface under the point)
 --   R:pos(s) -> x, y, z   R:dir(s) -> fx, fy   R:grade(s) -> %   R:tag(s) -> ground tag for the ride physics
+--   (the world moves the points onto the roads and paths they are on as it matches the route: match.lua)
 local M = {}
 local floor, sqrt, max, min, abs = math.floor, math.sqrt, math.max, math.min, math.abs
 M.STEP = 2                                          -- metres between resampled route points

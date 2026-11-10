@@ -10,6 +10,7 @@
 local world = ATLAS_REQUIRE("world")
 local route = ATLAS_REQUIRE("route")
 local mesh_lib = ATLAS_REQUIRE("mesh")
+local trees_lib = ATLAS_REQUIRE("trees")      -- trees and plants: drawn by their block's distance
 
 TinyAtlas.View = TinyAtlas.View or {}
 local V = TinyAtlas.View
@@ -20,6 +21,7 @@ local LOOK = { sky_top = { 96, 150, 206 }, sky_horizon = { 196, 216, 232 }, fog_
 local MAX_BOOST_MS = 40                   -- build time per frame while the loading screen is up
 -- settings (console for now; the settings menu will use the same names)
 local cv_style = CreateClientConVar("ta_style", "flat", true, false, "World look: flat (low-poly colours) or textured (the asset pack's ground textures)")
+local cv_pack = CreateClientConVar("ta_pack", "default", true, false, "Asset pack for the textured look (default, city, ...)")
 local cv_pixel = CreateClientConVar("ta_pixelate", "1", true, false, "Pixel size of the pixel-art filter: 1 = off, 2-6 = bigger pixels")
 local cv_back = CreateClientConVar("ta_cam_back", "9", true, false, "Camera distance behind the rider (m)")
 local cv_up = CreateClientConVar("ta_cam_up", "4", true, false, "Camera height above the rider (m)")
@@ -30,6 +32,22 @@ local function say(msg) print("[Tiny Atlas] " .. msg) end
 local function load_pack(id)
   local ok, pack = pcall(include, "tinyatlas/packs/" .. id .. ".lua")
   if not ok or type(pack) ~= "table" then error("asset pack '" .. id .. "' not found (" .. tostring(pack) .. ")") end
+  -- files that come with it: its 3D trees (<id>_trees3d.lua, tools/packs/trees3d.py) and its building textures
+  -- (<id>_bld.lua, tools/packs/pixel_buildings.py); their textures join the pack's
+  if not pack.extras_loaded then
+    pack.extras_loaded = true
+    for _, extra in ipairs({ "_trees3d", "_bld", "_ground" }) do
+      local okt, t3 = pcall(include, "tinyatlas/packs/" .. id .. extra .. ".lua")
+      if okt and type(t3) == "table" then
+        if extra == "_trees3d" then pack.trees3d = t3 end
+        pack.alphatest = pack.alphatest or {}
+        for tex, def in pairs(t3.textures or {}) do
+          if not pack.ground[tex] then pack.ground[tex] = { def.file } end
+          if def.alphatest then pack.alphatest[tex] = true end
+        end
+      end
+    end
+  end
   return pack
 end
 local mats = {}
@@ -44,8 +62,9 @@ local function ground_material(pack, tex)
     return m
   end
   local files = pack.ground[tex] or pack.ground.rural
-  local m = CreateMaterial("tinyatlas_ground_" .. pack.id .. "_" .. tex, "UnlitGeneric",
-    { ["$basetexture"] = "color/white", ["$vertexcolor"] = 1, ["$nocull"] = 1, ["$model"] = 0 })
+  local params = { ["$basetexture"] = "color/white", ["$vertexcolor"] = 1, ["$nocull"] = 1, ["$model"] = 0 }
+  if pack.alphatest and pack.alphatest[tex] then params["$alphatest"] = 1 end      -- windows and other cut-outs
+  local m = CreateMaterial("tinyatlas_ground_" .. pack.id .. "_" .. tex, "UnlitGeneric", params)
   local png = "tinyatlas/packs/" .. pack.id .. "/" .. files[1]
   local src = Material(png, "noclamp")
   if src and not src:IsError() then m:SetTexture("$basetexture", src:GetTexture("$basetexture"))
@@ -94,6 +113,8 @@ local function make_meshes(groups)
       local L = h.tex[G.tex]
       if not L then L = {}; h.tex[G.tex] = L end
       L[#L + 1] = m
+      -- trees and plants: which kind (0 3D trees, 1 their pictures, 2 plants) and their block's middle
+      if G.lod then h.lod = h.lod or {}; h.lod[m] = { G.lod, G.bx or 0, G.by or 0, G.near } end
       h.tris = h.tris + G.n / 3
     end
   end
@@ -128,11 +149,13 @@ end
 
 local function start(opts)
   V.Stop()
-  local pack = load_pack(opts.pack or "default")
+  local pack = load_pack(opts.pack or (cv_style:GetString() == "textured" and cv_pack:GetString()) or "default")
   V.pack = pack
   local W = world.new({
     fetch = TinyAtlasFetch, lat = opts.lat, lon = opts.lon, tile_metres = pack.tile_metres or 3.3, unit = U,
+    tex_metres = pack.tex_metres, far_metres = pack.far_metres, buildings = pack.buildings and cv_style:GetString() == "textured",
     make = make_meshes, free = free_meshes, log = say, style = cv_style:GetString() == "textured" and "textured" or "flat",
+    trees = pack.trees3d,
   })
   V.W, V.R, V.mode, V.on = W, opts.R, opts.mode, true
   V.s, V.phase, V.progress, V.t = 0, "loading", nil, 0
@@ -378,7 +401,20 @@ local function frame(fov)
         TV:SetUnpacked((c.ox - O[1]) * U, (c.oy - O[2]) * U, -O[3] * U)
         MT:SetTranslation(TV)
         cam.PushModelMatrix(MT)
-        for _, m in ipairs(L2) do m:Draw(); draws = draws + 1 end
+        local lods = c.handle.lod
+        for _, m in ipairs(L2) do
+          local l = lods and lods[m]
+          local draw = true
+          if l then
+            local dx, dy = c.ox + l[2] - cx, c.oy + l[3] - cy
+            local dd = dx * dx + dy * dy
+            if l[1] == 0 then draw = dd < trees_lib.LOD_M ^ 2
+            elseif l[1] == 1 then draw = dd >= trees_lib.LOD_M ^ 2
+            elseif l[1] == 3 then draw = dd < l[4] * l[4]          -- building detail, near only
+            else draw = dd < trees_lib.PLANT_M ^ 2 end
+          end
+          if draw then m:Draw(); draws = draws + 1 end
+        end
         cam.PopModelMatrix()
       end
     end

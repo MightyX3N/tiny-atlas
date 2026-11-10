@@ -83,6 +83,27 @@ from the bank down to under the water.
 route are built first, up to 1.2 km ahead, so the trainer always knows the gradient in time. On a bridge or in a
 tunnel (not built until milestone 3) the route goes straight across.
 
+**On the roads (match.lua).** A recorded GPX track wanders a few metres off the road almost everywhere, so riding
+its raw positions put the rider on grass, pavements and gardens beside the road (with 6 m of GPS drift, only 34-42 % of
+the way was on a road or path). The route is put onto the map's roads and paths first, with hidden Markov model map
+matching (Newson & Krumm 2009, the method OSRM and Valhalla use): candidates are the nearest points on each road or path
+within 30 m plus "off the map"; distance to the GPS point (with the track's own GPS error, learned from how far its
+points sit from the roads) and heading make a candidate likely; moving between candidates costs the difference between
+the distance on the map (along a road, or through the junction where two connect) and along the route; roads that do not
+connect there cannot be hopped between, riding against the route's heading costs a lot, and rejoining the map after a
+spell off it costs as much as the distance along the map from where the rider left it. Viterbi picks the cheapest
+chain; each point is settled once the route is 150 m past it, and the route ahead is matched before the cells along it
+are built. The rider rides in the middle of a path, cycleway or track, and on a road in the middle of the lane on their
+side (left where traffic keeps left); turns onto another road go through the junction, and the line is eased but never
+off what the rider is on. Where the route really leaves the mapped roads, a 2.5 m path is added to the map under it,
+shifted so it joins the roads at both ends. `R.way[k]` says what each point is on.
+
+`game/tests/atlas/test_match.lua CACHE GPX...` (env `NOISE=m` adds GPS-like drift, `KM=n` the first n km, `RAW=1`
+compares with the raw positions, `OVERTURE=0` vector tile roads only) checks where the rider ends up: on a road or path,
+away from its edges, no sideways jumps, the climb unchanged. With 6 m of drift: on a road or path 91-99 % of the way
+(the rest bridges and tunnels), off one 0-0.2 %, climbs within 3 m of the drift-free ride (Alpe d'Huez 916 m, Rold Skov
+291 m).
+
 **Checks after every cell:** standing water level within 1.5 m in each water area, and no more than 5 % (and 60 m2)
 of the road area steeper than 30 %.
 

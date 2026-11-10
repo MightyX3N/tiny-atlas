@@ -95,6 +95,123 @@ function M:get(kind, z, x, y, ok, err)
   end, function(e) finish(nil, e) end)
 end
 
+-- any tile by URL, cached under <root>/<kind>/<z>/<x>_<y>.dat (photos, land cover). A failure is remembered for the
+-- session (and a 404 on disk, as an empty file), so a tile a service does not have is not asked for again.
+function M:get_url(kind, z, x, y, url, ok, err)
+  local path = string.format("%s/%s/%d/%d_%d.dat", self.root, kind, z, x, y)
+  local data = self.P.read(path)
+  if data then
+    if #data == 0 then return err("not available (cached)") end
+    self.stats.hits = self.stats.hits + 1
+    return ok(data)
+  end
+  self.failed = self.failed or {}
+  if self.failed[path] then return err(self.failed[path]) end
+  if self.waiting[path] then table.insert(self.waiting[path], { ok, err }); return end
+  self.waiting[path] = { { ok, err } }
+  local function finish(body, e)
+    local list = self.waiting[path]
+    self.waiting[path] = nil
+    for _, cb in ipairs(list) do if body then cb[1](body) else cb[2](e) end end
+  end
+  self.P.http_get(url, function(body)
+    self.stats.downloads = self.stats.downloads + 1
+    self.stats.bytes = self.stats.bytes + #body
+    self.P.write(path, body)
+    finish(body)
+  end, function(e)
+    self.failed[path] = tostring(e)
+    if tostring(e):match("HTTP 404") or tostring(e):match("HTTP 400") then self.P.write(path, "") end
+    finish(nil, url .. ": " .. tostring(e))
+  end)
+end
+
+-- ---- parts of big files (HTTP range requests), cached on disk in blocks: Overture's and Layercake's Parquet ----
+M.BLOCK = 262144
+-- bytes first .. first + len - 1 (0-based) of the file at url; dir: its cache folder (under root)
+-- (tick: called between cached blocks read from disk, inside a coroutine)
+function M:get_range(url, dir, first, len, ok, err, tick)
+  local B = M.BLOCK
+  local b0, b1 = math.floor(first / B), math.floor((first + len - 1) / B)
+  local blocks, missing = {}, {}
+  for b = b0, b1 do
+    if tick and (b - b0) % 4 == 3 then tick() end
+    local d = self.P.read(string.format("%s/%s/%d.blk", self.root, dir, b))
+    if d then blocks[b] = d else missing[#missing + 1] = b end
+  end
+  local function done()
+    local parts = {}
+    for b = b0, b1 do parts[#parts + 1] = blocks[b] end
+    local all = table.concat(parts)
+    local off = first - b0 * B
+    ok(all:sub(off + 1, off + len))
+  end
+  if #missing == 0 then self.stats.hits = self.stats.hits + 1; return done() end
+  -- runs of missing blocks, one request each
+  local runs = {}
+  for _, b in ipairs(missing) do
+    local r = runs[#runs]
+    if r and r[2] == b - 1 then r[2] = b else runs[#runs + 1] = { b, b } end
+  end
+  local left, failed = #runs, nil
+  for _, r in ipairs(runs) do
+    local a = r[1] * B
+    local z = (r[2] + 1) * B - 1
+    local key = url .. "#" .. r[1] .. "-" .. r[2]
+    local function finish(body, e)
+      local list = self.waiting[key]
+      self.waiting[key] = nil
+      for _, cb in ipairs(list) do if body then cb[1](body) else cb[2](e) end end
+    end
+    local function got(body)
+      -- the last block may be short (the file's end)
+      for b = r[1], r[2] do
+        local s = body:sub((b - r[1]) * B + 1, (b - r[1] + 1) * B)
+        if #s > 0 then
+          blocks[b] = s
+          self.P.write(string.format("%s/%s/%d.blk", self.root, dir, b), s)
+        else blocks[b] = "" end
+      end
+      left = left - 1
+      if left == 0 then if failed then err(failed) else done() end end
+    end
+    local function bad(e)
+      failed = failed or e
+      left = left - 1
+      if left == 0 then err(failed) end
+    end
+    if self.waiting[key] then table.insert(self.waiting[key], { got, bad })
+    else
+      self.waiting[key] = { { got, bad } }
+      self.P.http_get(url, function(body)
+        self.stats.downloads = self.stats.downloads + 1
+        self.stats.bytes = self.stats.bytes + #body
+        finish(body)
+      end, function(e) finish(nil, url .. ": " .. tostring(e)) end, string.format("bytes=%d-%d", a, z))
+    end
+  end
+end
+
+-- the last n bytes of the file at url (a Parquet footer), cached as <dir>/tail_<n>.blk
+function M:get_tail(url, dir, n, ok, err)
+  local path = string.format("%s/%s/tail_%d.blk", self.root, dir, n)
+  local d = self.P.read(path)
+  if d then return ok(d) end
+  local key = url .. "#tail" .. n
+  if self.waiting[key] then table.insert(self.waiting[key], { ok, err }); return end
+  self.waiting[key] = { { ok, err } }
+  self.P.http_get(url, function(body)
+    self.stats.downloads = self.stats.downloads + 1
+    self.stats.bytes = self.stats.bytes + #body
+    self.P.write(path, body)
+    local list = self.waiting[key]; self.waiting[key] = nil
+    for _, cb in ipairs(list) do cb[1](body) end
+  end, function(e)
+    local list = self.waiting[key]; self.waiting[key] = nil
+    for _, cb in ipairs(list) do cb[2](url .. ": " .. tostring(e)) end
+  end, "bytes=-" .. n)
+end
+
 -- tile numbers of a latitude / longitude at zoom z, plus the position inside the tile (0..1)
 function M.tile_of(lat, lon, z)
   local n = 2 ^ z

@@ -22,10 +22,10 @@ M.TEXTURE = {
   path_unpaved = "dirt", rail = "rail", track = "dirt", pier = "paving", water = "water", sea = "water",
   stream = "water", paved = "paving", sand = "sand", wetland = "wetland", wood = "forest_floor", park = "grass",
   grass = "grass", pitch = "pitch", cemetery = "grass", farmland = "farmland", rock = "rock", ice = "snow",
-  residential = "urban", commercial = "urban", industrial = "urban", ground = "rural",
+  residential = "urban", commercial = "urban", industrial = "urban", ground = "rural", worn = "worn", worn_wood = "worn_wood", worn_grass = "worn_grass", worn_rural = "worn_rural",
 }
 M.WALL_TEXTURE = "paving"
--- every texture used, in drawing order (water last)
+-- every texture used, in drawing order (water last; M.add_textures adds more, e.g. buildings)
 M.TEXTURES = { "flat" }
 do
   local seen = { water = true }
@@ -35,6 +35,41 @@ do
   if not seen.rural then M.TEXTURES[#M.TEXTURES + 1] = "rural" end
 end
 M.MAX_VERTS = 65535
+-- more textures to draw (after the ground; see-through ones last)
+function M.add_textures(list, last)
+  local have = {}
+  for _, t in ipairs(M.TEXTURES) do have[t] = true end
+  for _, t in ipairs(list) do if not have[t] then have[t] = true; M.TEXTURES[#M.TEXTURES + 1] = t end end
+  for _, t in ipairs(last or {}) do
+    for i = #M.TEXTURES, 1, -1 do if M.TEXTURES[i] == t then table.remove(M.TEXTURES, i) end end
+    M.TEXTURES[#M.TEXTURES + 1] = t
+  end
+end
+
+-- Skirts: every edge on the cell's border gets a strip hanging straight down under it, so where the neighbouring
+-- cell's ground meets it a little higher or lower (their border points are not always in exactly the same places)
+-- no gap opens. Hidden under the neighbour's ground otherwise.
+M.SKIRT_LAND = 3
+M.SKIRT_WATER = 0.6
+local function border_edges(r)
+  local X, Y, V, N, S = r.X, r.Y, r.V, r.N, r.S
+  local out = {}
+  local NX = { 2, 3, 1 }
+  for t = 1, r.nt do
+    local o = 3 * t - 3
+    for i = 1, 3 do
+      if not N[o + i] then
+        local a, b = V[o + i], V[o + NX[i]]
+        local xa, ya, xb, yb = X[a], Y[a], X[b], Y[b]
+        if (xa == xb and (xa == 0 or xa == S)) or (ya == yb and (ya == 0 or ya == S)) then
+          out[#out + 1] = { t, a, b }
+        end
+      end
+    end
+  end
+  return out
+end
+M.border_edges = border_edges
 
 local WATER = cell.WATER
 -- light from the south-west, fairly high; flat ground gets FLAT of full brightness
@@ -77,10 +112,17 @@ function M.build(r, g, opts)
   tick()
 
   local groups, cur = {}, {}
+  local TM = opts.tex_metres or {}
+  -- an aerial photo over the whole cell (opts.photo = { u0, v0, u1, v1 }: the part of the image this cell is):
+  -- every ground triangle takes it, the light only shades the slopes a little (the photo has its own)
+  local P = opts.photo
+  local pu, pv, pdu, pdv
+  if P then pu, pv, pdu, pdv = P.u0, P.v0, (P.u1 - P.u0) / (8192 * k), (P.v1 - P.v0) / (8192 * k) end
   local function group(tex)
+    if P then tex = "photo" end
     local G = cur[tex]
-    if not G or G.n + 3 > M.MAX_VERTS then
-      G = { tex = tex, n = 0, d = {} }
+    if not G or G.n + 6 > M.MAX_VERTS then
+      G = { tex = tex, n = 0, d = {}, tm = TM[tex] or tm }
       cur[tex] = G
       groups[#groups + 1] = G
     end
@@ -88,9 +130,18 @@ function M.build(r, g, opts)
   end
   local function vert(G, x, y, z, c)
     local d, i = G.d, G.n * 8
-    -- textures repeat every tile_metres, anchored to the world origin so they continue across cells
+    -- textures repeat every tile_metres (or the pack's size for that texture), anchored to the world origin so
+    -- they continue across cells
+    local gm = G.tm
     d[i + 1], d[i + 2], d[i + 3] = x * U, y * U, z * U
-    d[i + 4], d[i + 5] = (ox + x) / tm, -(oy + y) / tm
+    if P then
+      d[i + 4], d[i + 5] = pu + x * pdu, pv - y * pdv
+      c = c / FLAT
+      c = 255 * (c < 1 and (0.55 + 0.45 * c) or (1 + 0.25 * (c - 1)))
+      if c > 255 then c = 255 end
+    else
+      d[i + 4], d[i + 5] = (ox + x) / gm, -(oy + y) / gm
+    end
     d[i + 6], d[i + 7], d[i + 8] = c, c, c
     G.n = G.n + 1
   end
@@ -133,9 +184,10 @@ function M.build(r, g, opts)
       end
       local along = abs(dx) > abs(dy)
       local function wv(x, y, z)
+        if P then return vert(W, x, y, z, c * FLAT / 255) end
         local d, i8 = W.d, W.n * 8
         d[i8 + 1], d[i8 + 2], d[i8 + 3] = x * U, y * U, z * U
-        d[i8 + 4], d[i8 + 5] = ((along and (ox + x) or -(oy + y))) / tm, -z / tm
+        d[i8 + 4], d[i8 + 5] = ((along and (ox + x) or -(oy + y))) / W.tm, -z / W.tm
         d[i8 + 6], d[i8 + 7], d[i8 + 8] = c, c, c
         W.n = W.n + 1
       end
@@ -143,6 +195,30 @@ function M.build(r, g, opts)
       wv(ax, ay, ta); wv(bx, by, tb); wv(bx, by, wb)
       wv(ax, ay, ta); wv(bx, by, wb); wv(ax, ay, wa)
     end
+  end
+
+  -- skirts, in the texture of the ground above them; where land meets water at the border they reach below both
+  -- (the neighbour's shore may be a hand's width to either side)
+  local function skirt_bottom(v, top, depth)
+    local lo = top
+    if land[v] and land[v] < lo then lo = land[v] end
+    if water[v] and water[v] < lo then lo = water[v] end
+    return lo - depth
+  end
+  for _, e in ipairs(border_edges(r)) do
+    local t, a, b = e[1], e[2], e[3]
+    local s = surf[t]
+    local wet = WATER[s]
+    local Hs = wet and water or land
+    local depth = wet and M.SKIRT_WATER or M.SKIRT_LAND
+    local G = group(M.TEXTURE[s] or "rural")
+    if G.n + 6 > M.MAX_VERTS then cur[G.tex] = nil; G = group(M.TEXTURE[s] or "rural") end
+    local ax, ay, bx, by = X[a] * k, -Y[a] * k, X[b] * k, -Y[b] * k
+    local ta, tb = Hs[a], Hs[b]
+    local ba, bb = skirt_bottom(a, ta, depth), skirt_bottom(b, tb, depth)
+    local ca, cb = wet and 255 or (shade[a] or FLAT), wet and 255 or (shade[b] or FLAT)
+    vert(G, ax, ay, ta, ca); vert(G, bx, by, tb, cb); vert(G, bx, by, bb, cb)
+    vert(G, ax, ay, ta, ca); vert(G, bx, by, bb, cb); vert(G, ax, ay, ba, ca)
   end
   return groups
 end
@@ -162,7 +238,8 @@ function M.far(H, tx, ty, opts)
     if opts.tick then opts.tick() end
   end
   local sm = step * k
-  local G = { tex = M.FAR_TEXTURE, n = 0, d = {} }
+  local P = opts.photo
+  local G = { tex = P and "photo" or M.FAR_TEXTURE, n = 0, d = {} }
   local d = G.d
   local function shade(i, j)
     local il, ir = math.max(0, i - 1), math.min(n, i + 1)
@@ -178,8 +255,15 @@ function M.far(H, tx, ty, opts)
     local x, y, z = i * sm, -j * sm, hs[j * (n + 1) + i]
     local o = G.n * 8
     d[o + 1], d[o + 2], d[o + 3] = x * U, y * U, z * U
-    d[o + 4], d[o + 5] = (ox + x) / tm, -(oy + y) / tm
     local c = shade(i, j)
+    if P then
+      d[o + 4], d[o + 5] = P.u0 + i / n * (P.u1 - P.u0), P.v0 + j / n * (P.v1 - P.v0)
+      c = c / FLAT
+      c = 255 * (c < 1 and (0.55 + 0.45 * c) or (1 + 0.25 * (c - 1)))
+      if c > 255 then c = 255 end
+    else
+      d[o + 4], d[o + 5] = (ox + x) / tm, -(oy + y) / tm
+    end
     d[o + 6], d[o + 7], d[o + 8] = c, c, c
     G.n = G.n + 1
   end
@@ -205,7 +289,7 @@ M.PALETTE = {
   residential = { 146, 168, 112 }, commercial = { 182, 178, 168 }, industrial = { 170, 168, 162 },
   building = { 176, 160, 146 },
   road = { 112, 112, 120 }, road_unpaved = { 186, 164, 124 }, cycleway = { 188, 112, 96 }, path = { 214, 200, 170 },
-  path_unpaved = { 192, 166, 120 }, track = { 184, 158, 114 }, rail = { 126, 112, 104 }, pier = { 176, 140, 104 },
+  path_unpaved = { 192, 166, 120 }, track = { 184, 158, 114 }, worn = { 150, 150, 92 }, worn_wood = { 118, 122, 74 }, worn_grass = { 150, 150, 92 }, worn_rural = { 158, 146, 98 }, rail = { 126, 112, 104 }, pier = { 176, 140, 104 },
   paved = { 196, 190, 180 },
   water = { 88, 170, 210 }, sea = { 78, 156, 204 }, stream = { 96, 176, 210 },
   wall = { 164, 156, 144 },
@@ -359,6 +443,28 @@ function M.build_flat(r, g, opts)
       vert(ax, ay, ta, top); vert(bx, by, tb, top); vert(bx, by, wb, bot)
       vert(ax, ay, ta, top); vert(bx, by, wb, bot); vert(ax, ay, wa, bot)
     end
+  end
+
+  -- skirts, in the colour of the ground above them (reaching below land and water where they meet)
+  local function skirt_bottom(v, top, depth)
+    local lo = top
+    if land[v] and land[v] < lo then lo = land[v] end
+    if water[v] and water[v] < lo then lo = water[v] end
+    return lo - depth
+  end
+  for _, e in ipairs(border_edges(r)) do
+    local t, a, b = e[1], e[2], e[3]
+    local s = surf[t]
+    local wet = WATER[s]
+    local Hs = wet and water or land
+    local depth = wet and M.SKIRT_WATER or M.SKIRT_LAND
+    if G.n + 6 > M.MAX_VERTS then newgroup() end
+    local ax, ay, bx, by = X[a] * k, -Y[a] * k, X[b] * k, -Y[b] * k
+    local col = light(P[s] or P.ground, LZ * 0.8, 1, 1)
+    local ta, tb = Hs[a], Hs[b]
+    local ba, bb = skirt_bottom(a, ta, depth), skirt_bottom(b, tb, depth)
+    vert(ax, ay, ta, col); vert(bx, by, tb, col); vert(bx, by, bb, col)
+    vert(ax, ay, ta, col); vert(bx, by, bb, col); vert(ax, ay, ba, col)
   end
   return groups
 end
