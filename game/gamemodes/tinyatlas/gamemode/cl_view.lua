@@ -22,7 +22,28 @@ local MAX_BOOST_MS = 40                   -- build time per frame while the load
 -- settings (console for now; the settings menu will use the same names)
 local cv_style = CreateClientConVar("ta_style", "flat", true, false, "World look: flat (low-poly colours) or textured (the asset pack's ground textures)")
 local cv_pack = CreateClientConVar("ta_pack", "default", true, false, "Asset pack for the textured look (default, city, ...)")
-local cv_pixel = CreateClientConVar("ta_pixelate", "1", true, false, "Pixel size of the pixel-art filter: 1 = off, 2-6 = bigger pixels")
+-- the pixel-art look is made over the whole picture (drawn small, stretched with sharp pixels), not in the textures
+local cv_pixel = CreateClientConVar("ta_pixelate", "4", true, false, "Pixel size of the pixel-art look: 1 = off, 2-8 = screen pixels per pixel")
+local cv_outline = CreateClientConVar("ta_outlines", "0.5", true, false, "Pixel-art outlines: how dark, where something stands in front of something farther away (0 = off, 1 = black)")
+-- The look's settings as the player set them, then as the asset pack wants them: a pack's look table can fix a
+-- setting (force) or move the player's own up or down (add), e.g.
+--   look = { pixelate = { force = 1 }, outlines = { add = -0.2 } }     -- in packs/<id>.lua
+V.LOOK_SETTINGS = {
+  pixelate = { cv = cv_pixel, min = 1, max = 8, whole = true },
+  outlines = { cv = cv_outline, min = 0, max = 1 },
+}
+function V.look_setting(name, pack)
+  local S = V.LOOK_SETTINGS[name]
+  local v = S.cv:GetFloat()
+  local rule = pack and pack.look and pack.look[name]
+  if type(rule) == "table" then
+    if tonumber(rule.force) then v = tonumber(rule.force)
+    elseif tonumber(rule.add) then v = v + tonumber(rule.add) end
+  end
+  v = math.Clamp(v, S.min, S.max)
+  if S.whole then v = math.floor(v + 0.5) end
+  return v, type(rule) == "table" and rule.force ~= nil
+end
 local cv_back = CreateClientConVar("ta_cam_back", "9", true, false, "Camera distance behind the rider (m)")
 local cv_up = CreateClientConVar("ta_cam_up", "4", true, false, "Camera height above the rider (m)")
 
@@ -66,7 +87,8 @@ local function ground_material(pack, tex)
   if pack.alphatest and pack.alphatest[tex] then params["$alphatest"] = 1 end      -- windows and other cut-outs
   local m = CreateMaterial("tinyatlas_ground_" .. pack.id .. "_" .. tex, "UnlitGeneric", params)
   local png = "tinyatlas/packs/" .. pack.id .. "/" .. files[1]
-  local src = Material(png, "noclamp")
+  -- smooth, with mipmaps: the pixels come from the picture's pixel-art filter, so textures must not shimmer under it
+  local src = Material(png, "noclamp smooth mips")
   if src and not src:IsError() then m:SetTexture("$basetexture", src:GetTexture("$basetexture"))
   else say("texture missing: materials/" .. png) end
   mats[key] = m
@@ -85,8 +107,36 @@ function V.pixel_target(w, h)
   local mat = CreateMaterial("tinyatlas_pixel_" .. key, "UnlitGeneric",
     { ["$basetexture"] = rt:GetName(), ["$ignorez"] = 1, ["$vertexcolor"] = 0, ["$model"] = 0 })
   t = { rt = rt, mat = mat }
+  -- the outlines: the distance at every pixel (a float target, the stock DepthWrite shader writes it), then
+  -- shaders/fxc/tinyatlas_edges_ps20b.vcs (tools/shaders/) draws the picture with dark edges where the distance jumps
+  if V.edges_ok == nil then V.edges_ok = file.Exists("shaders/fxc/tinyatlas_edges_ps20b.vcs", "GAME") end
+  if V.edges_ok then
+    t.drt = GetRenderTargetEx("tinyatlas_depth_" .. key, w, h, RT_SIZE_LITERAL, MATERIAL_RT_DEPTH_SEPARATE,
+      1 + 4 + 8 + 256, 0, IMAGE_FORMAT_RGBA16161616F)
+    t.edge = CreateMaterial("tinyatlas_edges_" .. key, "screenspace_general", {
+      ["$pixshader"] = "tinyatlas_edges_ps20", ["$basetexture"] = rt:GetName(), ["$texture1"] = t.drt:GetName(),
+      ["$linearread_basetexture"] = 1, ["$linearread_texture1"] = 1, ["$linearwrite"] = 1,
+      ["$ignorez"] = 1, ["$vertextransform"] = 0, ["$copyalpha"] = 0, ["$alpha_blend"] = 0,
+      ["$c0_x"] = 1 / w, ["$c0_y"] = 1 / h, ["$c0_z"] = V.EDGE_SILHOUETTE, ["$c0_w"] = 0.5 })
+  end
   targets[key] = t
   return t
+end
+V.EDGE_SILHOUETTE = 0.12     -- how much farther (as a share) the pixel beside must be than the surface going on
+V.EDGE_M = 250               -- metres: what is nearer has outlines (the depth pass draws only that)
+-- the depth pass's material for a texture: the stock DepthWrite shader writing the distance as a colour, cut-outs
+-- (leaves, windows) cut the same way as in the picture
+local dmats = {}
+local function depth_material(pack, tex)
+  local key = pack.id .. "/" .. tex
+  if dmats[key] then return dmats[key] end
+  local src = ground_material(pack, tex)
+  local params = { ["$color_depth"] = 1, ["$nocull"] = 1 }
+  if pack.alphatest and pack.alphatest[tex] then params["$alphatest"] = 1; params["$alphatestreference"] = 0.5 end
+  local m = CreateMaterial("tinyatlas_depth_" .. pack.id .. "_" .. tex, "DepthWrite", params)
+  if params["$alphatest"] then m:SetTexture("$basetexture", src:GetTexture("$basetexture")) end
+  dmats[key] = m
+  return m
 end
 
 -- ---- meshes: mesh.lua groups -> IMeshes, one per group ----
@@ -346,7 +396,7 @@ local function frame(fov)
   local L = LOOK
   local hz, top = L.sky_horizon, L.sky_top
   -- the pixel-art filter: draw the world into a small render target, then stretch it over the screen with sharp pixels
-  local px = math.floor(math.Clamp(cv_pixel:GetFloat(), 1, 6))
+  local px = V.look_setting("pixelate", V.pack)
   local rw, rh = ScrW(), ScrH()
   local pix
   if px >= 2 then
@@ -392,6 +442,17 @@ local function frame(fov)
     end
   end
   render.ClearDepth()
+  -- a mesh's level of detail: drawn at this distance?
+  local function shown(c, m)
+    local l = c.handle.lod and c.handle.lod[m]
+    if not l then return true end
+    local dx, dy = c.ox + l[2] - cx, c.oy + l[3] - cy
+    local dd = dx * dx + dy * dy
+    if l[1] == 0 then return dd < trees_lib.LOD_M ^ 2
+    elseif l[1] == 1 then return dd >= trees_lib.LOD_M ^ 2
+    elseif l[1] == 3 then return dd < l[4] * l[4]          -- building detail, near only
+    else return dd < trees_lib.PLANT_M ^ 2 end
+  end
   for _, tex in ipairs(mesh_lib.TEXTURES) do
     local mat
     for _, c in ipairs(vis) do
@@ -401,25 +462,43 @@ local function frame(fov)
         TV:SetUnpacked((c.ox - O[1]) * U, (c.oy - O[2]) * U, -O[3] * U)
         MT:SetTranslation(TV)
         cam.PushModelMatrix(MT)
-        local lods = c.handle.lod
         for _, m in ipairs(L2) do
-          local l = lods and lods[m]
-          local draw = true
-          if l then
-            local dx, dy = c.ox + l[2] - cx, c.oy + l[3] - cy
-            local dd = dx * dx + dy * dy
-            if l[1] == 0 then draw = dd < trees_lib.LOD_M ^ 2
-            elseif l[1] == 1 then draw = dd >= trees_lib.LOD_M ^ 2
-            elseif l[1] == 3 then draw = dd < l[4] * l[4]          -- building detail, near only
-            else draw = dd < trees_lib.PLANT_M ^ 2 end
-          end
-          if draw then m:Draw(); draws = draws + 1 end
+          if shown(c, m) then m:Draw(); draws = draws + 1 end
         end
         cam.PopModelMatrix()
       end
     end
   end
   for _, c in ipairs(vis) do tris = tris + c.handle.tris end
+  -- the outlines' depth pass: the near cells again, each pixel's distance (nothing there: 0)
+  local dark = V.look_setting("outlines", V.pack)
+  local edges = pix and pix.drt and dark > 0
+  if edges and pix.dark ~= dark then pix.edge:SetFloat("$c0_w", dark); pix.dark = dark end
+  if edges then
+    render.FogMode(MATERIAL_FOG_NONE)
+    render.PushRenderTarget(pix.drt, 0, 0, rw, rh)
+    render.Clear(0, 0, 0, 0, true, true)
+    local near2 = (V.EDGE_M + cm) ^ 2
+    for _, tex in ipairs(mesh_lib.TEXTURES) do
+      local set = false
+      for _, c in ipairs(vis) do
+        local L2 = c.handle.tex[tex]
+        local mx, my = c.ox + cm / 2 - cx, c.oy - cm / 2 - cy
+        if L2 and mx * mx + my * my < near2 then
+          if not set then render.SetMaterial(depth_material(V.pack, tex)); set = true end
+          TV:SetUnpacked((c.ox - O[1]) * U, (c.oy - O[2]) * U, -O[3] * U)
+          MT:SetTranslation(TV)
+          cam.PushModelMatrix(MT)
+          for _, m in ipairs(L2) do
+            if shown(c, m) then m:Draw(); draws = draws + 1 end
+          end
+          cam.PopModelMatrix()
+        end
+      end
+    end
+    render.PopRenderTarget()
+    render.FogMode(MATERIAL_FOG_LINEAR)
+  end
   -- the rider (a stand-in until the bike model is in)
   do
     render.SetColorMaterial()
@@ -430,7 +509,7 @@ local function frame(fov)
   render.FogMode(MATERIAL_FOG_NONE)
   if pix then
     render.PopRenderTarget()
-    render.SetMaterial(pix.mat)
+    render.SetMaterial(edges and pix.edge or pix.mat)
     render.DrawScreenQuad()
   end
   V.px = px
@@ -492,3 +571,35 @@ concommand.Add("ta_roam", function(_, _, args)
   V.StartRoam(tonumber(args[1]) or 55.6761, tonumber(args[2]) or 12.5683)
 end)
 concommand.Add("ta_stop", function() V.Stop(); say("stopped") end)
+
+-- ---- settings: the look (ta_settings, or F1) ----
+function V.OpenSettings()
+  if IsValid(V.settings_frame) then V.settings_frame:Remove() end
+  local f = vgui.Create("DFrame")
+  V.settings_frame = f
+  f:SetTitle("Tiny Atlas - settings")
+  f:SetSize(380, 190)
+  f:Center()
+  f:MakePopup()
+  local y = 34
+  local function slider(name, label, decimals)
+    local S = V.LOOK_SETTINGS[name]
+    local s = vgui.Create("DNumSlider", f)
+    s:SetPos(14, y); s:SetSize(352, 32)
+    s:SetText(label)
+    s:SetMin(S.min); s:SetMax(S.max); s:SetDecimals(decimals)
+    s:SetConVar(S.cv:GetName())
+    local _, forced = V.look_setting(name, V.pack)
+    local note = vgui.Create("DLabel", f)
+    note:SetPos(18, y + 30); note:SetSize(348, 16)
+    note:SetText(forced and "(the asset pack sets this one)" or "")
+    y = y + 54
+    return s
+  end
+  slider("pixelate", "Pixel size (1 = off)", 0)
+  slider("outlines", "Outlines (0 = off)", 2)
+end
+concommand.Add("ta_settings", function() V.OpenSettings() end)
+hook.Add("PlayerBindPress", "TinyAtlas_Settings", function(_, bind, pressed)
+  if pressed and bind == "gm_showhelp" then V.OpenSettings(); return true end
+end)

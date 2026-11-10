@@ -136,7 +136,10 @@ return {
     roofs = { "buildings/roof_tiles.png" }, roof_tints = { {1,1,1}, {0.6,0.66,0.78}, … },
   },
   bridge = { side = "#b9a88f" },
-  filter = { pixel = 3, colours = 64 },   -- 1 = off
+  look = {                     -- optional: the pixel-art look (drawn over the whole picture, not in the textures).
+    pixelate = { add = 1 },    -- each setting either fixes the player's value (force = n) or moves it (add = n);
+    outlines = { force = 0 },  -- pixelate: screen pixels per pixel, 1..8 (1 = off); outlines: 0..1 (0 = off)
+  },                           -- players set their own in the settings window (F1 or ta_settings)
   rider = { jersey = "#c8392f", shorts = "#1f1f24", skin = "#e3b48f", helmet = "#f2f2f2" },
   bikes = { mtb = { texture = "bikes/bike_basecolor.png" } },
 }

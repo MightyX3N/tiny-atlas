@@ -1,8 +1,8 @@
 """3D trees for the default pack, from Quaternius's Stylized Nature MegaKit (bought; see the pack's credits).
 
 For each tree model it writes:
-  - pixel-art textures at the ground's pixel size (the pack's ground tiles are 32 px for 3.3 m, about 9.7 px a metre):
-    the kit's bark and leaf textures scaled to that density, reduced to a few colours, leaves cut out sharply
+  - the kit's own bark and leaf textures (at most TEX_MAX px; the game pixelates the whole picture on screen), leaves cut
+    out sharply, a few colours fixed (autumn leaves made summer green)
   - a model file the game reads (lua/tinyatlas/packs/default_trees3d.lua): for each level of detail, the bark and the
     leaves as triangle lists (position, normal, texture coordinate), in metres, z up, trunk base at 0
 Kept light enough for every device:
@@ -18,14 +18,16 @@ import numpy as np
 import meshoptimizer
 from PIL import Image
 
-PX_PER_M = 32 / 3.3                 # the ground's pixel size
+PX_PER_M = 24                       # pixels a metre for the distant trees' pictures (the game pixelates the whole
+                                    # picture on screen, so the models keep their own textures)
+TEX_MAX = 512                       # the kit's textures are kept as they are, at most this big (GMod: powers of two)
 # colours the kit's own materials paint on (its textures are only shapes there): grass is a gradient from root to tip
 # (MI_Grass_Common's Color_Bottom / Color_Top, brought to the pack's greens); the plants' olive leaves are pulled
 # towards the pack's grass green
 GRASS_TINT = (0.42, 0.60, 0.24, 0.80, 0.92, 0.45)    # root r, g, b, tip r, g, b
 LEAF_GREEN = (95, 150, 55)
 SUMMER = {"leaves_birch_c.png": (128, 168, 62)}    # leaves the kit paints in autumn colours -> their summer green
-LEAF_COLOURS, BARK_COLOURS = 10, 6  # colours per texture (pixel-art palettes)
+LEAF_COLOURS, BARK_COLOURS = 0, 0   # colours per texture (0: all of them)
 # the small plants, rocks and mushrooms (no picture: they are only drawn near the rider): triangles each
 PLANTS = {
     "Grass_Common_Short": 50, "Grass_Common_Tall": 70, "Grass_Wispy_Short": 60, "Grass_Wispy_Tall": 70,
@@ -92,9 +94,8 @@ def density(part, size):
 def pixel_texture(src, part, out_path, colours):
     im = Image.open(src).convert("RGBA")
     native = density(part, im.size[0])
-    scale = PX_PER_M / native
-    # a power of two (GMod), at least 8 px
-    side = max(8, 2 ** int(round(np.log2(max(8, im.size[0] * scale)))))
+    # a power of two (GMod), at most TEX_MAX
+    side = min(TEX_MAX, 2 ** int(round(np.log2(max(8, im.size[0])))))
     small = im.resize((side, side), Image.LANCZOS)
     a = np.array(small)
     if part["name"].lower().startswith("grass"):
@@ -119,7 +120,7 @@ def pixel_texture(src, part, out_path, colours):
         a[:, :, :3] = np.clip(grey + (rgb - grey) * 0.55, 0, 255).astype(np.uint8)
     alpha = a[:, :, 3] >= 128 if part["leaf"] else np.ones(a.shape[:2], bool)
     rgb = Image.fromarray(a[:, :, :3])
-    q = rgb.quantize(colors=colours, method=Image.Quantize.MEDIANCUT).convert("RGB")
+    q = rgb.quantize(colors=colours, method=Image.Quantize.MEDIANCUT).convert("RGB") if colours else rgb
     out = np.dstack([np.array(q), np.where(alpha, 255, 0).astype(np.uint8)])
     Image.fromarray(out, "RGBA").save(out_path)
     return side, native
@@ -225,7 +226,7 @@ def main():
                 side, native = pixel_texture(os.path.join(kit, p["tex"]), p, os.path.join(tex_dir, key + ".png"),
                                              LEAF_COLOURS if p["leaf"] else BARK_COLOURS)
                 textures[key] = p["leaf"]
-                print("  texture %s: %d px (was %.0f px a metre, now %.1f)" % (key, side, native, PX_PER_M))
+                print("  texture %s: %d px" % (key, side))
         shot = {"parts": []}
         plant = name in PLANTS
         all_tris = sum(len(p["idx"]) // 3 for p in parts)

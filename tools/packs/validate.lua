@@ -11,7 +11,7 @@ M.TREE_KINDS = { "broadleaf", "conifer", "palm", "shrub", "orchard" }
 M.SEASONS = { spring = true, summer = true, autumn = true, winter = true }
 local KNOWN = { id = 1, name = 1, author = 1, version = 1, license = 1, credits = 1, local_only = 1, extends = 1,
   tile_metres = 1, edge_darken = 1, ground = 1, ground_priority = 1, seasons = 1, water = 1, wall = 1, sky = 1, sun = 1,
-  trees = 1, props = 1, buildings = 1, bridge = 1, filter = 1, rider = 1, bikes = 1, description = 1, preview = 1 }
+  trees = 1, props = 1, buildings = 1, bridge = 1, filter = 1, look = 1, rider = 1, bikes = 1, description = 1, preview = 1 }
 
 local function png_size(data)
   if not data or #data < 24 or data:sub(1, 8) ~= "\137PNG\r\n\26\n" then return nil end
@@ -154,6 +154,16 @@ function M.validate(pack, fs, base)
     local f = pack.filter
     if f.pixel and (type(f.pixel) ~= "number" or f.pixel < 1 or f.pixel > 16) then err("filter.pixel must be 1..16") end
     if f.colours and (type(f.colours) ~= "number" or f.colours < 2 or f.colours > 256) then err("filter.colours must be 2..256") end
+  end
+  -- the pixel-art look: a pack fixes a setting (force) or moves the player's own (add)
+  local LOOK = { pixelate = { 1, 8 }, outlines = { 0, 1 } }
+  for k, rule in pairs(pack.look or {}) do
+    local range = LOOK[k]
+    if not range then err("look." .. tostring(k) .. ": unknown (pixelate, outlines)")
+    elseif type(rule) ~= "table" or (rule.force == nil) == (rule.add == nil) then err("look." .. k .. " must be { force = n } or { add = n }")
+    elseif rule.force ~= nil and (type(rule.force) ~= "number" or rule.force < range[1] or rule.force > range[2]) then
+      err(string.format("look.%s.force must be %g..%g", k, range[1], range[2]))
+    elseif rule.add ~= nil and type(rule.add) ~= "number" then err("look." .. k .. ".add must be a number") end
   end
   if type(pack.tile_metres) == "number" and (pack.tile_metres < 0.5 or pack.tile_metres > 50) then err("tile_metres must be 0.5..50") end
 

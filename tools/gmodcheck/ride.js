@@ -12,7 +12,7 @@ const fs = require('fs');
   await p.exposeFunction('save', (name, data) => { fs.writeFileSync(out + '/' + name, Buffer.from(data.split(',')[1], 'base64')); if (++n % 100 == 0) console.log(n, 'pictures'); });
   // the viewer server serves the whole file system (cd / && python3 -m http.server 8125 --bind 127.0.0.1)
   const here = __dirname, repo = require('path').resolve(here, '../..');
-  await p.goto(`http://localhost:${port}${here}/ride.html?cap=${cap}&mat=${process.env.MAT || repo + '/packs/tinyatlas_pack_default/materials'}&from=${from || 0}&to=${to || 1e9}&px=${process.env.PX || 1}`);
+  await p.goto(`http://localhost:${port}${here}/ride.html?cap=${cap}&mat=${process.env.MAT || repo + '/packs/tinyatlas_pack_default/materials'}&from=${from || 0}&to=${to || 1e9}&px=${process.env.PX || 1}&edges=${process.env.EDGES || 0}${process.env.Q ? '&' + process.env.Q : ''}`);
   await p.waitForFunction(() => window.DONE === true, null, { timeout: 0, polling: 2000 });
   console.log('done', n, 'pictures');
   await b.close();

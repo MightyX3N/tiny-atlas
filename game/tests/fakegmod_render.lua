@@ -55,6 +55,12 @@ return function(F, opts)
     if not in3d then err("IMesh:Draw outside cam.Start3D") end
     local t = model_stack[#model_stack] or { 0, 0, 0 }
     F.frame_draws = (F.frame_draws or 0) + 1
+    -- the outlines' depth pass (DepthWrite) is not part of the picture: counted, not recorded
+    if cur_mat and cur_mat.shader == "DepthWrite" then
+      F.depth_draws = (F.depth_draws or 0) + 1
+      if not (F.render_target and F.render_target.name:find("^tinyatlas_depth_")) then err("DepthWrite drawn outside the depth target") end
+      return
+    end
     if F.capture then F.draws[#F.draws + 1] = { mesh = self, mat = cur_mat, t = { t[1], t[2], t[3] } } end
   end
   local PER = { [MATERIAL_TRIANGLES] = 3, [MATERIAL_QUADS] = 4, [MATERIAL_LINES] = 2 }
@@ -111,6 +117,22 @@ return function(F, opts)
     for k, v in pairs(params) do p[k] = v end
     return setmetatable({ name = name, shader = shader, params = p }, MA)
   end
+  -- menus: panels that remember what was set on them (F.panels), enough to run the gamemode's own menus
+  F.panels = {}
+  local PN = {}
+  PN.__index = function(t, k)
+    if PN[k] then return PN[k] end
+    return function(self, ...) self.calls[#self.calls + 1] = { k, ... }; return self end
+  end
+  function PN:Remove() self.removed = true end
+  function PN:IsValid() return not self.removed end
+  vgui = {}
+  function vgui.Create(class, parent)
+    local p = setmetatable({ class = class, parent = parent, calls = {}, removed = false }, PN)
+    F.panels[#F.panels + 1] = p
+    return p
+  end
+  function IsValid(x) return x ~= nil and (type(x) ~= "table" or not x.IsValid or x:IsValid()) end
   function MA:IsError() return self.error end
   function MA:GetTexture(k) return self.params[k] end
   function MA:SetTexture(k, t) self.params[k] = t end
@@ -131,7 +153,7 @@ return function(F, opts)
   function render.FogColor() end
   function render.DrawBox(pos) F.rider_box = pos end
   -- render targets (the pixel-art filter)
-  RT_SIZE_LITERAL, MATERIAL_RT_DEPTH_SEPARATE, IMAGE_FORMAT_RGB888 = 5, 1, 2
+  RT_SIZE_LITERAL, MATERIAL_RT_DEPTH_SEPARATE, IMAGE_FORMAT_RGB888, IMAGE_FORMAT_RGBA16161616F = 5, 1, 2, 24
   local rt_stack = {}
   function GetRenderTargetEx(name, w, h)
     return { name = name, w = w, h = h, GetName = function(self) return self.name end }
@@ -144,6 +166,7 @@ return function(F, opts)
   function render.PopRenderTarget()
     if #rt_stack == 0 then err("PopRenderTarget with nothing pushed") end
     rt_stack[#rt_stack] = nil
+    F.render_target = rt_stack[#rt_stack]
   end
   function render.DrawScreenQuad()
     if #rt_stack ~= 0 then err("DrawScreenQuad while a render target is still pushed") end
@@ -193,6 +216,7 @@ return function(F, opts)
   function FO:Size() local cur = self.f:seek(); local sz = self.f:seek("end"); self.f:seek("set", cur); return sz end
   function FO:Close() self.f:close() end
   function file.Exists(path, where)
+    if where == "GAME" and F.game_files then return F.game_files[path] == true end
     local f = io.open(DATA .. "/" .. path, "rb")
     if f then f:close(); return true end
     return false
@@ -233,6 +257,7 @@ return function(F, opts)
   end
   function GetConVar(name) return F.convars[name] end
   function CV:GetString() return self.value end
+  function CV:GetName() return self.name end
   function CV:GetFloat() return tonumber(self.value) or 0 end
   function CV:GetInt() return math.floor(tonumber(self.value) or 0) end
   function CV:GetBool() return (tonumber(self.value) or 0) ~= 0 end

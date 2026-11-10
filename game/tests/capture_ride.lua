@@ -13,6 +13,8 @@ local PACK2 = here .. "../../packs/tinyatlas_pack_city"
 local DATA = os.tmpname() .. "_gmdata"
 os.execute('mkdir -p "' .. DATA .. '/tinyatlas" && ln -s "' .. CACHE .. '" "' .. DATA .. '/tinyatlas/cache"')
 local F = dofile(here .. "fakegmod.lua")(DATA, here .. "../gamemodes/tinyatlas/gamemode")
+-- TA_SHADERS=1: as if the outline shader (shaders/fxc/tinyatlas_edges_ps20b.vcs) is installed
+if os.getenv("TA_SHADERS") == "1" then F.game_files = { ["shaders/fxc/tinyatlas_edges_ps20b.vcs"] = true } end
 dofile(here .. "fakegmod_render.lua")(F, { lua_roots = { here .. "../gamemodes", PACK .. "/lua", PACK2 .. "/lua" },
   material_roots = { PACK .. "/materials", PACK2 .. "/materials" }, screen = { 1280, 720 } })
 GM = { FolderName = "tinyatlas" }
@@ -131,7 +133,7 @@ f:write('{"route":"' .. WHAT .. '","unit":52.4934,"meshes":[' .. table.concat(me
 f:close()
 local fails = 0
 for _, l in ipairs(printed) do if l:match("FAILED") and not l:match("elevation tile") then fails = fails + 1 end end
-oldprint(string.format("captured %d frames, %d meshes (%.1f MB), %d cells built (%.0f ms each), largest mesh %d vertices, Lua errors %d, FAILED lines %d, CPU %.0f s",
+oldprint(string.format("captured %d frames, %d meshes (%.1f MB), %d cells built (%.0f ms each), largest mesh %d vertices, Lua errors %d, FAILED lines %d, CPU %.0f s" .. (F.depth_draws and string.format(", outline depth pass %d draws", F.depth_draws) or ""),
   fcount, nid, offset / 1e6, V.W.stats.built, V.W.stats.built > 0 and V.W.stats.ms / V.W.stats.built or 0, F.mesh_stats.max_verts, #F.errors, fails, os.clock() - t0))
 for i = 1, math.min(10, #F.errors) do oldprint("  error: " .. F.errors[i]) end
 os.execute('rm -rf "' .. DATA .. '"')
