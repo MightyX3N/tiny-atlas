@@ -159,7 +159,23 @@ func _count_progress(finished: bool) -> Array:
 
 var wheel_h := Vector2(NAN, NAN)   # ground height under the rear and front wheel, eased
 
+## bike lights: on in the dark (evening, night) and under a roof (a tunnel, a long passage), like automatic lights;
+## a short roof (an arch, a bridge) doesn't flick them on and off
+func _bike_lights(at: float) -> void:
+	if rider != cyclist: return
+	# under a roof here and for most of the last 8 m (works after a jump too)
+	var n := 0
+	for back in [0.0, 2.0, 4.0, 6.0, 8.0]:
+		var p := pos(maxf(at - back, 0.0))
+		if world.solid_at(p + Vector3.UP * 3.2) or world.solid_at(p + Vector3.UP * 4.6): n += 1
+	var on := world.night > 0.3 or n >= 4
+	if on != cyclist.lights_on: cyclist.set_lights(on)
+
+var _lights_at := -1e9
 func _place_rider(at: float) -> void:
+	if absf(at - _lights_at) >= 1.0:
+		_lights_at = at
+		_bike_lights(at)
 	var p := pos(at)
 	var f := dir(at)
 	var right := Vector3.UP.cross(f).normalized()

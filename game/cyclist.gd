@@ -70,6 +70,70 @@ func _build_bike(paint: Dictionary) -> void:
 	for i in 2:
 		var p := Node3D.new(); bike.add_child(p); _part(pg, VS_BIKE, p)
 		pedals.append(p)
+	_build_lights()
+
+# ---------- bike lights: a white front light on the bar and a red one under the saddle ----------
+var front_lamp: MeshInstance3D
+var rear_lamp: MeshInstance3D
+var front_beam: SpotLight3D
+var rear_glow: OmniLight3D
+var lights_on := false
+
+func _lamp_mat(c: Color, on: bool) -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.albedo_color = c * (1.0 if on else 0.25)
+	if on:
+		m.emission_enabled = true; m.emission = c; m.emission_energy_multiplier = 4.0
+	return m
+
+func _build_lights() -> void:
+	# front: a small lamp body in the middle of the handlebar, its beam forward and a little down
+	var bar: Vector3 = pts.bar
+	front_lamp = MeshInstance3D.new()
+	var fb := BoxMesh.new(); fb.size = Vector3(0.045, 0.035, 0.06)
+	front_lamp.mesh = fb
+	front_lamp.position = bar + Vector3(0, -0.035, 0.03)
+	bike.add_child(front_lamp)
+	var lens := MeshInstance3D.new()
+	var lb := BoxMesh.new(); lb.size = Vector3(0.035, 0.025, 0.005)
+	lens.mesh = lb; lens.position = Vector3(0, 0, 0.032); lens.name = "lens"
+	front_lamp.add_child(lens)
+	front_beam = SpotLight3D.new()
+	front_beam.position = front_lamp.position + Vector3(0, 0, 0.04)
+	# a SpotLight shines along its -Z: turn it to face forward (+Z), tilted 7 degrees down
+	front_beam.rotation_degrees = Vector3(-7, 180, 0)
+	front_beam.spot_range = 28.0
+	front_beam.spot_angle = 22.0
+	front_beam.spot_angle_attenuation = 1.6
+	front_beam.light_energy = 6.0
+	front_beam.light_color = Color(1.0, 0.97, 0.9)
+	front_beam.shadow_enabled = true
+	bike.add_child(front_beam)
+	# rear: a red light on the seatpost, under the saddle, glowing a little on the ground behind
+	var sad: Vector3 = pts.saddle
+	rear_lamp = MeshInstance3D.new()
+	var rbx := BoxMesh.new(); rbx.size = Vector3(0.03, 0.045, 0.02)
+	rear_lamp.mesh = rbx
+	rear_lamp.position = sad + Vector3(0, -0.1, -0.06)
+	bike.add_child(rear_lamp)
+	rear_glow = OmniLight3D.new()
+	rear_glow.position = rear_lamp.position + Vector3(0, 0, -0.03)
+	rear_glow.omni_range = 1.6
+	rear_glow.light_energy = 0.35
+	rear_glow.position = rear_lamp.position + Vector3(0, -0.05, -0.12)
+	rear_glow.light_color = Color(1.0, 0.1, 0.06)
+	bike.add_child(rear_glow)
+	set_lights(lights_on)
+
+## bike lights on or off (on in the dark: at night, in a tunnel)
+func set_lights(on: bool) -> void:
+	lights_on = on
+	if front_lamp == null: return
+	front_lamp.material_override = _lamp_mat(Color(0.08, 0.08, 0.09), false)
+	(front_lamp.get_node("lens") as MeshInstance3D).material_override = _lamp_mat(Color(1.0, 0.97, 0.9), on)
+	rear_lamp.material_override = _lamp_mat(Color(1.0, 0.1, 0.06), on)
+	front_beam.visible = on
+	rear_glow.visible = on
 
 func repaint(paint: Dictionary) -> void:
 	_build_bike(paint)
