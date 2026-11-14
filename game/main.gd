@@ -252,9 +252,12 @@ func _jump(metres: float) -> void:
 func _wait_world(m: float) -> void:
 	state = "loading"
 	ui.show_only("loading")
+	# nothing 3D to draw behind the loading screen: the frames stay cheap and the loading threads get the CPU
+	get_viewport().disable_3d = true
 	while not world.is_ready(m):
 		ui.loading.text = "Loading the route...  %d %%" % int(world.progress(m) * 100.0)
 		await get_tree().process_frame
+	get_viewport().disable_3d = false
 
 func _kind() -> String:
 	return str(Bt.value("kind", "")) if Bt.connected() else ""
