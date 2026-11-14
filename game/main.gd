@@ -326,7 +326,12 @@ func _ride(dt: float) -> void:
 	if _on_foot(): target = inp[0] * Bt.walk_factor(0.0) / 3.6
 	speed = lerpf(speed, target, 1.0 - exp(-dt * (6.0 if kb_brake else 2.0)))
 	if kb_brake: speed = move_toward(speed, 0.0, dt * 4.0)
-	if auto: _bot_report()
+	if auto:
+		_bot_report()
+		# hitches: frames that took more than twice a 60 fps frame
+		if ride_time > 1.0:
+			dt_max = maxf(dt_max, dt)
+			if dt > 1.0 / 30.0: slow_frames += 1
 	d = minf(d + speed * dt, length)
 	_place_rider(d)
 	_use_rider(_on_foot())
@@ -345,6 +350,8 @@ func _ride(dt: float) -> void:
 			var ok: bool = st.missing_max == 0 and st.coarse_max == 0
 			print("TEST finished: %.0f m in %.0f s at %.0f km/h. Pop-in: %d regions seen but not shown, %d shown too coarse too close (most at once). Building used %.0f s of worker time = %.2f cores at this speed" % [
 				length, ride_time, bot_kmh, st.missing_max, st.coarse_max, st.job_ms / 1000.0, st.job_ms / 1000.0 / ride_time])
+			print("TEST frames: slowest %.0f ms, %d over 33 ms; the loader's main-thread work: slowest update %.1f ms (planning %.1f ms, putting meshes on screen %.1f ms), %d updates over 8 ms" % [
+				dt_max * 1000.0, slow_frames, st.update_ms_max, st.plan_ms_max, st.apply_ms_max, st.slow_updates])
 			print("TEST RESULT " + ("PASS" if ok else "FAIL"))
 			get_tree().quit(0 if ok else 1)
 			return
@@ -357,6 +364,8 @@ func _ride(dt: float) -> void:
 
 # ---------- self test: does the world load under the rider? ----------
 var report_at := 0.0
+var dt_max := 0.0
+var slow_frames := 0
 
 ## every 200 m: what's loaded, and whether anything seen from here was missing
 func _bot_report() -> void:
