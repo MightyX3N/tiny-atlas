@@ -350,8 +350,8 @@ func _bot_report() -> void:
 	if d < report_at: return
 	report_at += 200.0
 	var st: Dictionary = world.loader.stats
-	print("TEST at %.0f m: %d regions, %d triangles, %.0f MB, missing %d (most %d), too coarse %d (most %d), %d jobs" % [d, st.regions,
-		st.triangles, Performance.get_monitor(Performance.MEMORY_STATIC) / 1e6, st.missing, st.missing_max, st.coarse, st.coarse_max, st.jobs])
+	print("TEST at %.0f m: %d regions, %d triangles %s, %.0f MB, missing %d (most %d), too coarse %d (most %d), %d jobs" % [d, st.regions,
+		st.triangles, str(world.loader.triangles_by_level()), Performance.get_monitor(Performance.MEMORY_STATIC) / 1e6, st.missing, st.missing_max, st.coarse, st.coarse_max, st.jobs])
 
 # ---------- load test: how much building riding a kilometre takes ----------
 ## Moves along the route 25 m at a time and lets the loader finish each time, adding up the building time.
@@ -377,7 +377,7 @@ func _loadtest() -> void:
 	var st: Dictionary = world.loader.stats
 	var per_km: float = st.job_ms / 1000.0 / (length / 1000.0)
 	print("LOADTEST %.0f m: %d builds, %.1f s of building per km. One thread keeps up to %.0f km/h; with %d threads (this computer) %.0f km/h" % [
-		length, st.jobs, per_km, 3600.0 / per_km, world.loader._max_jobs, 3600.0 / per_km * world.loader._max_jobs])
+		length, st.jobs, per_km, 3600.0 / per_km, world.loader._threads, 3600.0 / per_km * world.loader._threads])
 	get_tree().quit()
 
 # ---------- device test: connect OmniPlay's pretend bike, pedal, check the rider moves ----------
