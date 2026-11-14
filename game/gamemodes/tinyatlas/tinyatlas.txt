@@ -1,8 +1,0 @@
-"tinyatlas"
-{
-	"base"		"base"
-	"title"		"Tiny Atlas"
-	"maps"		""
-	"menusystem"	"1"
-	"workshopid"	""
-}

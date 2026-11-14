@@ -1,0 +1,4 @@
+[submodule "voxbox"]
+	path = voxbox
+	url = https://github.com/MightyX3N/VoxBox
+	branch = dev

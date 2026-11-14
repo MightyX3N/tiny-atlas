@@ -1,90 +1,66 @@
-<p align="center"><img src="brand/logo/tiny_atlas_logo_stacked_6x.png" width="300" alt="Tiny Atlas"></p>
+# VoxTrainer
 
-# Tiny Atlas
+Ride real routes on your bike trainer, through the real place, rebuilt from
+[OpenStreetMap](https://www.openstreetmap.org/) in 10 cm voxels and lit by the sun. Walking pads and
+treadmills work too (you run instead).
 
-Ride, run or walk real routes anywhere in the world, in pixel art. Any GPX file becomes a world:
-roads, paths, rivers, bridges, buildings and trees from OpenStreetMap, real elevation, the local
-climate for weather. Ride it with the keyboard, or with your real bike trainer or walking pad through
-[OmniPlay](https://github.com/MightyX3N/omniplay): your watts move you, and the hills come back to the
-trainer.
+VoxTrainer is the first game on **[VoxBox](https://github.com/MightyX3N/VoxBox)**, the voxel world engine.
+Devices are handled by [OmniPlay](https://github.com/MightyX3N/omniplay)'s device code: smart trainers
+(FTMS), cadence and speed sensors, power meters, heart-rate straps, walking pads and treadmills over
+Bluetooth on Windows.
 
-Tiny Atlas runs as a **Garry's Mod gamemode** and as a **standalone LÖVE game** from one codebase: the gamemode
-itself, run in LÖVE on a small layer that gives it the GMod functions it uses (`game/love/gmod.lua`,
-`gmod_render.lua`). Both look the same: the game's own title screen, menus and ride screen, nothing of GMod's.
-Its look comes from **asset packs** (addons anyone can make), so the same route can be summer
-pixel art, autumn, winter, or a completely different style.
+> The Tiny Atlas project that used to live here is kept on the
+> [`tinyatlas` branch](https://github.com/MightyX3N/VoxTrainer/tree/tinyatlas).
 
-> Status: early development. The world is built live from map data while you ride; the menus, ride screen,
-> trainer support and the pixel-art look work in both versions. The rider and bike models are next.
+## Playing
 
-## What's here
+- **Start riding** follows the route; your speed comes from the trainer (or cadence × gear).
+- **Connect devices** finds Bluetooth devices nearby. Connected devices are remembered.
+- **Kit & bike**: jerseys, helmets and bike paints. Most unlock by riding: 5 km for the first kit, up to
+  250 km for the rainbow one. Progress is saved on the computer.
+- No devices? Use the keyboard: hold **W** / **↑** to pedal, **Shift** to sprint, **S** / **↓** to brake,
+  **A** / **D** to jump 100 m back or forward, **C** for the camera, **H** to hide the keys, **Esc** to pause.
 
-| Folder | What |
+## Getting it running
+
+1. Get the code with VoxBox:
+
+       git clone --recursive https://github.com/MightyX3N/VoxTrainer
+       cd VoxTrainer
+       tools/setup.sh        # VoxBox submodule, Lua GDExtension, and the Bluetooth helper (needs mingw-w64)
+
+2. Godot 4.6.3 built with the voxel module: see
+   [voxbox/docs/BUILDING_GODOT.md](https://github.com/MightyX3N/VoxBox/blob/main/docs/BUILDING_GODOT.md).
+
+3. Build a world to ride. You need `luajit`, `python3` with `pip install osmium`, and an OpenStreetMap
+   extract (`.osm.pbf`, from [Geofabrik](https://download.geofabrik.de/) or
+   [BBBike](https://extract.bbbike.org/)). Give a name and the points the route goes through:
+
+       tools/build_world.sh helsinki.osm.pbf "Helsinki centre" 60.16774 24.95236 60.17801 24.93820
+
+   This plans a bike route over the streets, cuts the map around it, builds `world/` and works out what can be
+   seen from each stretch of the route (about 15 minutes for 2 km). It builds full detail 300 m either side of the
+   route and a lighter version out to 1 km (`CORRIDOR=` and `FAR=` change that), so the map extract has to cover
+   the route plus about 1.2 km; a city extract from BBBike does.
+
+4. Open the project in the Godot editor and run it, or export it (the *Windows* preset). Put `world/` next to
+   the exported `.exe`, with `omniplay_ble.dll` from `build/` for Bluetooth.
+
+## Testing
+
+Run with these after `--` on Godot's command line:
+
+| option | what it does |
 |---|---|
-| `tools/routebuilder/` | GPX → route package: chunked terrain (1 m near the route, 4 m around it, 32 m to the horizon), ground tags, graded roads, bridges, rivers and lakes with flowing water, buildings, trees, climate |
-| `tools/packs/` | the default asset pack generator and the pack validator (runs the real Lua) |
-| `tools/viewer/` | a stand-in renderer (three.js, headless) used to test routes and packs |
-| `game/gamemodes/tinyatlas/` | the game: the world builder (`gamemode/atlas/`), the view, the UI kit and screens (`cl_ui.lua`, `cl_menu.lua`, `cl_hud.lua`), riding physics, trainer; its pixel fonts (`content/resource/fonts`, OFL) |
-| `game/love/` | the LÖVE layer: GMod's functions on LÖVE, downloads, the `OmniPlay.*` API over the SDK's shared memory, direct connections between games (`link.lua`, ENet) and hosting through playit.gg (`playit.lua`) |
-| `online/` | the online service (Cloudflare Worker + D1, free plan): leaderboards, ghosts, shared routes, friends, riders nearby |
-| `game/tests/` | tests without the game: physics, a fake GMod running the real Lua (`test_screens.lua` plays every screen, `test_online.lua` the online features), the OmniPlay simulator |
-| `tools/love_test/` | plays the real standalone on a virtual screen like a player (`run.sh walkthrough.lua`) |
-| `packs/tinyatlas_pack_default/` | the built default pack (a GMod addon folder) |
-| `docs/` | `FORMATS.md` (route package + asset pack format), `GMOD.md` (the renderer, `ta_perftest`), `TRAINER.md` (OmniPlay) |
-| `brand/` | logo |
+| `--autotest` | a bot rides the whole route at 40 km/h in real time (`--botkmh=N` for another speed) and fails if anything that can be seen from where it is isn't on screen yet, or is still a coarser version where it should be full detail |
+| `--loadtest` | moves along the route 25 m at a time and reports how much building a kilometre takes, and the speed this computer keeps up with |
+| `--keytest` | presses the keys: pedal, sprint, jump, brake |
+| `--devtest --fake` | connects OmniPlay's pretend bike, pedals and checks the rider moves |
+| `--kittest` | rides past 5 km and checks the Classic Red kit unlocks and is saved |
+| `--tour=DIR` | takes pictures along the route (`--frames=N`, `--spots=a,b,…`, `--cam=0..3`) |
+| `--world=DIR` | rides another built world |
 
-## Building a route
+## Licence
 
-```
-pip install -r requirements.txt
-cd tools
-python3 -m routebuilder.build ../samples/city-run-10km.gpx --out ../routes/city-run --cache ../cache
-python3 -m routebuilder.check ../routes/city-run      # automatic checks (seams, steepness, water...)
-```
-
-It downloads OpenStreetMap vector tiles (OpenFreeMap), Terrain Tiles elevation and Open-Meteo climate
-into `cache/` (with `--plan plan.json` it never downloads and lists what it needs instead).
-Routes that can't be ridden (a "walk" that heads out over the sea and back) are flagged as not usable.
-
-## Looking at a route
-
-```
-cd tools/viewer && npm install
-cd ../.. && python3 -m http.server 8124 &
-cd tools && python3 render_tests.py city-run     # renders a contact sheet into shots/
-```
-
-## Riding it in Garry's Mod
-
-```
-python3 tools/gmod_export.py routes/city-run-10km <garrysmod>/data/tinyatlas/routes
-```
-
-Start the gamemode: it opens on its own title screen. Your own GPX files go in `garrysmod/data/tinyatlas/gpx/` (the
-standalone: its save folder's `tinyatlas/gpx/`) and show up under My routes. Developer commands in the console:
-`ta_ride <route>`, `ta_roam [lat] [lon]`, `ta_stop`, `ta_buildbench`.
-
-## The standalone
-
-```
-python3 tools/build_love.py build/love        # the LÖVE layer + the gamemode + fonts + packs, laid out like GMod
-love build/love
-tools/love_test/run.sh tools/love_test/walkthrough.lua <map cache> <out dir>     # plays it through, screenshots
-```
-
-## Tests
-
-```
-cd game/tests
-python3 ../../tools/luajit.py test_physics.lua
-python3 ../../tools/luajit.py test_gmod_bridge.lua
-python3 ../../tools/luajit.py test_screens.lua <map cache>
-python3 ../../tools/luajit.py ../../third_party/omniplay-sdk/tools/omniplay_sim.lua bike 12 &
-python3 ../../tools/luajit.py test_trainer_sim.lua
-python3 ../../tools/luajit.py test_atlas_bench.lua <data dir> <tile file> <tilejson file>
-```
-
-## Licences
-
-Code: MIT (`LICENSE`). Art, map data and third-party parts keep their own licences:
-[`assets/LICENSES.md`](assets/LICENSES.md). Map data © OpenStreetMap contributors (ODbL).
+MIT for VoxTrainer's own code (see [LICENSE](LICENSE)); the OmniPlay device code in `lua/` and `native/` is
+GPL-3.0. Map data © OpenStreetMap contributors (ODbL). Everything else is in [CREDITS.md](CREDITS.md).
