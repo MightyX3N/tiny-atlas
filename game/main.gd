@@ -189,7 +189,17 @@ func _camera(dt: float) -> void:
 		2: want = p + right * 4.0 + Vector3.UP * 1.4; look = p + Vector3.UP * 1.0
 		3: want = p - f * 12.0 + Vector3.UP * 9.0; look = p + f * 10.0
 	cam_pos = cam_pos.lerp(want, 1.0 - exp(-dt * 4.0))
-	cam.global_position = cam_pos
+	# don't look from inside a wall (narrow passages, tight streets): come in towards the rider until it's clear
+	var head := p + Vector3.UP * 1.5
+	var to := cam_pos - head
+	var n := int(to.length() / 0.25)
+	var clear := cam_pos
+	for i in range(1, n + 1):
+		var q := head + to * (float(i) / n)
+		if world.solid_at(q) or world.solid_at(q + Vector3.UP * 0.3):
+			clear = head + to * (maxf(float(i) - 1.5, 0.0) / n)
+			break
+	cam.global_position = clear
 	cam.look_at(look, Vector3.UP)
 
 # ---------- states ----------
