@@ -130,7 +130,15 @@ func _voxel_body(mi: MeshInstance3D, kit: Dictionary, skin_img: Image) -> void:
 	# the base character is a muscular "superhero": slim the arms and the upper body to a rider's build
 	var slim := { "spine_02": 0.9, "spine_03": 0.86, "clavicle_l": 0.85, "clavicle_r": 0.85, "upperarm_l": 0.78,
 		"upperarm_r": 0.78, "lowerarm_l": 0.85, "lowerarm_r": 0.85, "neck_01": 0.9, "thigh_l": 0.94, "thigh_r": 0.94 }
+	# fists: the model's hands are open and flat. Each finger bone is curled towards the palm (the rest pose has the
+	# palms down), and the finger's voxels are made from that curled finger, in the hand's space, so the glove closes
+	# round the bar
+	var curl := _finger_curls()
+	var tri := { "fbind": null }      # the finger bone of the triangle being sampled (set by pick, read by to_bone)
 	var to_bone := func(p: Vector3, bind) -> Vector3:
+		if tri.fbind != null:
+			var fb: int = bind_bone[tri.fbind]
+			if curl.has(fb): return (curl[fb] as Transform3D) * (skin.get_bind_pose(tri.fbind) * p)
 		var q: Vector3 = skin.get_bind_pose(bind) * p
 		var f: float = slim.get(bone_name[bind], 1.0)
 		return Vector3(q.x * f, q.y, q.z * f)
@@ -146,11 +154,14 @@ func _voxel_body(mi: MeshInstance3D, kit: Dictionary, skin_img: Image) -> void:
 		var best = null; var bw := -1.0
 		for k in score:
 			if score[k] > bw: bw = score[k]; best = k
-		# fingers belong to the hand (one rigid glove)
+		# fingers belong to the hand (one rigid glove, made from the curled fingers)
 		var bn := str(bone_name[best]) if best != null else ""
+		tri.fbind = null
 		if bn.begins_with("index") or bn.begins_with("middle") or bn.begins_with("ring") or bn.begins_with("pinky") or bn.begins_with("thumb"):
 			var hb = _bind_of(bind_bone, sk.find_bone("hand_l" if bn.ends_with("_l") else "hand_r"))
-			if hb != null: best = hb
+			if hb != null:
+				tri.fbind = best
+				best = hb
 		return best
 	var paint := func(bind, pos: Vector3, mpos: Vector3, tex: Color):
 		return _kit_colour(kit, str(bone_name[bind]), pos.y / maxf(lens[bind], 0.01), mpos, tex)
@@ -171,6 +182,29 @@ func _voxel_body(mi: MeshInstance3D, kit: Dictionary, skin_img: Image) -> void:
 		piece.mesh = Voxelize.build(g[bind], vs, mat)
 		att.add_child(piece)
 		pieces.append(att)
+
+## for each finger bone: the transform from its own space to its hand's space with the finger curled into a fist
+## (knuckles 80 degrees, middle joints 95, tips 65; the thumb 25 each, folded over the fingers)
+func _finger_curls() -> Dictionary:
+	var out := {}
+	var palm := Vector3.DOWN          # the rest pose has the palms facing down
+	for side in ["_l", "_r"]:
+		var hand := sk.find_bone("hand" + side)
+		for f in ["index", "middle", "ring", "pinky", "thumb"]:
+			var to_hand := Transform3D.IDENTITY
+			for seg in [1, 2, 3]:
+				var b := sk.find_bone("%s_0%d%s" % [f, seg, side])
+				if b < 0: break
+				var g := sk.get_bone_global_rest(b)
+				var dir := g.basis.y.normalized()
+				var axis_g := dir.cross(palm)
+				if axis_g.length() < 0.01: axis_g = Vector3.BACK
+				var axis_l := (g.basis.inverse() * axis_g.normalized()).normalized()
+				var ang := ([25.0, 25.0, 25.0] if f == "thumb" else [80.0, 95.0, 65.0])[seg - 1] as float
+				to_hand = to_hand * sk.get_bone_rest(b) * Transform3D(Basis(axis_l, deg_to_rad(ang)), Vector3.ZERO)
+				out[b] = to_hand
+			if hand < 0: continue
+	return out
 
 func _bind_of(bind_bone: Dictionary, bone: int):
 	for k in bind_bone:

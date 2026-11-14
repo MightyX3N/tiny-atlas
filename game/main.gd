@@ -41,6 +41,8 @@ var keytest := false
 var kittest := false
 var loadtest := false
 var tour_spots := ""
+var time_i := 0             # 0 day, 1 evening, 2 night (N)
+var start_night := 0.0      # --night=0..1 for pictures
 
 func _ready() -> void:
 	var args := OS.get_cmdline_args() + OS.get_cmdline_user_args()
@@ -56,10 +58,12 @@ func _ready() -> void:
 		elif a.begins_with("--spots="): tour_spots = a.substr(8)
 		elif a.begins_with("--botkmh="): bot_kmh = float(a.substr(9))
 		elif a == "--loadtest": loadtest = true
+		elif a.begins_with("--night="): start_night = float(a.substr(8))
 	world = VoxboxWorld.new(); add_child(world)
 	if not world.open(world_dir if world_dir != "" else VoxboxWorld.default_dir()):
 		get_tree().quit(1); return
 	length = world.length
+	world.night = start_night
 	kits = Kits.new()
 	if auto or devtest or keytest: kits.kit_id = "club"; kits.paint_id = "carbon"
 	cyclist = Cyclist.new(kits.kit(), kits.paint()); add_child(cyclist)
@@ -68,7 +72,7 @@ func _ready() -> void:
 	ui = GameUI.new(); add_child(ui)
 	ui.route_l.text = "%s, %.1f km" % [str(world.info.get("name", "Your route")), length / 1000.0]
 	help_l = Label.new()
-	help_l.text = "W / ↑  pedal (hold)     Shift  sprint     S / ↓  brake\nA / ←  back 100 m     D / →  forward 100 m\nC  camera     H  hide keys     Esc  pause"
+	help_l.text = "W / ↑  pedal (hold)     Shift  sprint     S / ↓  brake\nA / ←  back 100 m     D / →  forward 100 m\nC  camera     N  day / night     H  hide keys     Esc  pause"
 	help_l.add_theme_font_size_override("font_size", 18)
 	help_l.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.7))
 	help_l.add_theme_constant_override("outline_size", 6)
@@ -236,6 +240,10 @@ func _unhandled_input(e: InputEvent) -> void:
 		elif k == KEY_LEFT or k == KEY_A: _jump(-100.0)
 		elif k == KEY_C: cam_mode = (cam_mode + 1) % 4; ui.show_message(["Camera: behind", "Camera: close", "Camera: side", "Camera: high"][cam_mode])
 		elif k == KEY_H or k == KEY_F1: help_l.visible = not help_l.visible
+		elif k == KEY_N:
+			time_i = (time_i + 1) % 3
+			world.night = [0.0, 0.6, 1.0][time_i]
+			ui.show_message(["Day", "Evening", "Night"][time_i])
 		elif Bt.fake and k >= KEY_0 and k <= KEY_3: Bt.fake_effort(k - KEY_0)
 
 ## keyboard riding (when no devices): hold W / ↑ to pedal, Shift to sprint, S / ↓ to brake

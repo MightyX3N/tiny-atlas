@@ -19,7 +19,7 @@ Bluetooth on Windows.
 - **Kit & bike**: jerseys, helmets and bike paints. Most unlock by riding: 5 km for the first kit, up to
   250 km for the rainbow one. Progress is saved on the computer.
 - No devices? Use the keyboard: hold **W** / **↑** to pedal, **Shift** to sprint, **S** / **↓** to brake,
-  **A** / **D** to jump 100 m back or forward, **C** for the camera, **H** to hide the keys, **Esc** to pause.
+  **A** / **D** to jump 100 m back or forward, **C** for the camera, **N** for day, evening or night, **H** to hide the keys, **Esc** to pause.
 
 ## Getting it running
 
