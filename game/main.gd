@@ -352,6 +352,7 @@ func _ride(dt: float) -> void:
 				length, ride_time, bot_kmh, st.missing_max, st.coarse_max, st.job_ms / 1000.0, st.job_ms / 1000.0 / ride_time])
 			print("TEST frames: slowest %.0f ms, %d over 33 ms; the loader's main-thread work: slowest update %.1f ms (planning %.1f ms, putting meshes on screen %.1f ms), %d updates over 8 ms" % [
 				dt_max * 1000.0, slow_frames, st.update_ms_max, st.plan_ms_max, st.apply_ms_max, st.slow_updates])
+			print("TEST planning: slowest slice per phase (start, window, free, list, check, order) ms: ", world.loader.phase_ms)
 			print("TEST RESULT " + ("PASS" if ok else "FAIL"))
 			get_tree().quit(0 if ok else 1)
 			return
