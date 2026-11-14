@@ -38,8 +38,9 @@ Bluetooth on Windows.
 
        tools/build_world.sh helsinki.osm.pbf "Helsinki centre" 60.16774 24.95236 60.17801 24.93820
 
-   This plans a bike route over the streets, cuts the map around it, builds `world/` and works out what can be
-   seen from each stretch of the route (about 15 minutes for 2 km). It builds full detail 300 m either side of the
+   This plans a bike route over the streets, cuts the map around it, builds `world/` (with a description of what
+   everything is, for mods: see VoxBox's [world format](https://github.com/MightyX3N/VoxBox/blob/main/docs/FORMAT.md))
+   and works out what can be seen from each stretch of the route (about 20 minutes for 2 km). It builds full detail 300 m either side of the
    route and a lighter version out to 1 km (`CORRIDOR=` and `FAR=` change that), so the map extract has to cover
    the route plus about 1.2 km; a city extract from BBBike does.
 
@@ -59,6 +60,9 @@ Run with these after `--` on Godot's command line:
 | `--kittest` | rides past 5 km and checks the Classic Red kit unlocks and is saved |
 | `--tour=DIR` | takes pictures along the route (`--frames=N`, `--spots=a,b,…`, `--cam=0..3`) |
 | `--world=DIR` | rides another built world |
+
+And VoxBox's check of a built world, through the same API mods use (lanes, objects, traffic lights, doors, junctions,
+footways): `godot --headless --path . -s res://voxbox/tests/semantics_test.gd -- --world=$PWD/world`
 
 ## Licence
 
